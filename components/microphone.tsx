@@ -1,23 +1,52 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Toggle } from "@/components/ui/toggle";
-import { Mic, Pause } from "lucide-react";
+//import react stuff
+import {
+  useState,
+  useEffect,
+  useCallback,
+  Dispatch,
+  SetStateAction,
+} from "react";
+import { useQueue } from "@uidotdev/usehooks";
 
+//import nextjs stuff
+import Image from "next/image";
+
+// import convex stuff for db
+import { useMutation, useQuery, useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
+
+//import deepgram stuff
 import {
   CreateProjectKeyResponse,
   LiveClient,
   LiveTranscriptionEvents,
   createClient,
 } from "@deepgram/sdk";
-import { useState, useEffect, useCallback } from "react";
-import { useQueue } from "@uidotdev/usehooks";
+
+//import shadcnui stuff
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Toggle } from "@/components/ui/toggle";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+
+//import icon stuff
+import { Mic, Pause, User } from "lucide-react";
 import Dg from "@/app/dg.svg";
 
-import Image from "next/image";
+//import custom stuff
+import TranscriptDisplay from "@/components/microphone/transcript";
 
-interface WordDetail {
+export interface WordDetail {
   word: string;
   start: number;
   end: number;
@@ -26,14 +55,37 @@ interface WordDetail {
   punctuated_word: string;
 }
 
-interface FinalizedSentence {
-  speaker: string;
+export interface FinalizedSentence {
+  speaker: number;
   transcript: string;
   start: number;
   end: number;
+  meetingID: Id<"meetings">;
 }
 
-export default function Microphone() {
+export interface SpeakerDetail {
+  speakerNumber: number;
+  firstName: string;
+  lastName: string;
+  meetingID: Id<"meetings">;
+}
+
+interface MicrophoneProps {
+  meetingID: Id<"meetings">;
+  finalizedSentences: FinalizedSentence[];
+  setFinalizedSentences: Dispatch<SetStateAction<FinalizedSentence[]>>;
+  speakerDetails: SpeakerDetail[];
+  setSpeakerDetails: Dispatch<SetStateAction<SpeakerDetail[]>>;
+  setCaption: Dispatch<SetStateAction<string | null>>;
+}
+
+export default function Microphone({
+  meetingID,
+  finalizedSentences,
+  setFinalizedSentences,
+  speakerDetails,
+  setSpeakerDetails,
+}: MicrophoneProps) {
   const { add, remove, first, size, queue } = useQueue<any>([]);
   const [apiKey, setApiKey] = useState<CreateProjectKeyResponse | null>();
   const [connection, setConnection] = useState<LiveClient | null>();
@@ -46,9 +98,93 @@ export default function Microphone() {
   const [userMedia, setUserMedia] = useState<MediaStream | null>();
   const [caption, setCaption] = useState<string | null>();
   const [finalCaptions, setFinalCaptions] = useState<WordDetail[]>([]);
-  const [finalizedSentences, setFinalizedSentences] = useState<
-    FinalizedSentence[]
-  >([]);
+  const safeCaption = caption ?? null; // This ensures caption is not undefined
+
+  const addSpeakerToDB = useMutation(api.meetings.addSpeaker);
+
+  // Function to handle new speakers
+  const handleNewSpeaker = useCallback(
+    (speakerNumber: number) => {
+      // Check if the speaker already exists
+      if (
+        !speakerDetails.some((detail) => detail.speakerNumber === speakerNumber)
+      ) {
+        // Add new speaker with default names
+        const newSpeaker: SpeakerDetail = {
+          speakerNumber,
+          firstName: "Speaker " + speakerNumber,
+          lastName: "",
+          meetingID,
+        };
+        // console.log("New Speaker:", newSpeaker);
+        setSpeakerDetails((prevDetails) => [...prevDetails, newSpeaker]);
+      }
+    },
+    [speakerDetails, meetingID]
+  );
+
+  const handleFirstNameChange = (id: number, newFirstName: string) => {
+    setSpeakerDetails((prevSpeakers) =>
+      prevSpeakers.map((speaker) =>
+        speaker.speakerNumber === id
+          ? { ...speaker, firstName: newFirstName }
+          : speaker
+      )
+    );
+  };
+
+  const handleLastNameChange = (id: number, newLastName: string) => {
+    setSpeakerDetails((prevSpeakers) =>
+      prevSpeakers.map((speaker) =>
+        speaker.speakerNumber === id
+          ? { ...speaker, lastName: newLastName }
+          : speaker
+      )
+    );
+  };
+
+  //this helper function handles the mapping of the speaker number in the sentences to the speaker names in the speaker table
+  const getSpeakerName = (speakerNumber: number) => {
+    const speaker = speakerDetails.find(
+      (s) => s.speakerNumber === speakerNumber
+    );
+    return speaker
+      ? `${speaker.firstName} ${speaker.lastName}`.trim()
+      : `Speaker ${speakerNumber}`;
+  };
+
+  // Define the mutation hook at the top of your component
+  const storeFinalizedSentences = useMutation(
+    api.transcript.storeFinalizedSentence
+  );
+  // Fetch finalized sentences for the given meetingID when the component mounts
+  const finalizedSentencesFromDB = useQuery(
+    api.transcript.getFinalizedSentencesByMeeting,
+    { meetingID }
+  );
+
+  useEffect(() => {
+    // Check if there are any finalized sentences fetched from the database
+    if (finalizedSentencesFromDB && finalizedSentencesFromDB.length > 0) {
+      // Handle the fetched finalized sentences as needed
+      // For example, you might want to set them to your component's state
+      setFinalizedSentences(finalizedSentencesFromDB);
+    }
+  }, [finalizedSentencesFromDB]);
+
+  const speakersFromDB = useQuery(api.meetings.getSpeakersByMeeting, {
+    meetingID,
+  });
+
+  useEffect(() => {
+    // Check if there are any speakers fetched from the database
+    if (speakersFromDB && speakersFromDB.length > 0) {
+      // Set the fetched speakers to your component's state
+      setSpeakerDetails(speakersFromDB);
+    }
+  }, [speakersFromDB]);
+
+  const createMeeting = useMutation(api.meetings.createMeeting);
 
   const toggleMicrophone = useCallback(async () => {
     if (microphone && userMedia) {
@@ -56,14 +192,23 @@ export default function Microphone() {
       setMicrophone(null);
 
       microphone.stop();
-      console.log("Finalized Sentences:", finalizedSentences); // Log the finalized sentences when stopping the recording
+      // console.log("Finalized Sentences:", finalizedSentences); // Log the finalized sentences when stopping the recording
+
+      // Store finalized sentences in the database
+      await Promise.all(
+        finalizedSentences.map((sentence) => storeFinalizedSentences(sentence))
+      );
+      // Push speaker details to the database
+      await Promise.all(
+        speakerDetails.map((speaker) => addSpeakerToDB(speaker))
+      );
     } else {
       const userMedia = await navigator.mediaDevices.getUserMedia({
         audio: true,
       });
 
       const microphone = new MediaRecorder(userMedia);
-      microphone.start(500);
+      microphone.start(200);
 
       microphone.onstart = () => {
         setMicOpen(true);
@@ -175,29 +320,39 @@ export default function Microphone() {
   }, [connection, queue, remove, first, size, isProcessing, isListening]);
 
   // Function to process final captions and construct finalized sentences
-  const processFinalCaptions = (finalCaptions: WordDetail[]) => {
+  const processFinalCaptions = async (finalCaptions: WordDetail[]) => {
     const sentences: FinalizedSentence[] = [];
     let currentSpeaker = finalCaptions[0]?.speaker;
     let currentText = "";
     let startTime = finalCaptions[0]?.start;
     let endTime = finalCaptions[0]?.end;
 
-    finalCaptions.forEach((wordDetail, index) => {
+    // Track if we have already handled the current speaker
+    let handledSpeakers: number[] = [];
+
+    for (const wordDetail of finalCaptions) {
       if (
         wordDetail.speaker !== currentSpeaker ||
-        index === finalCaptions.length - 1
+        wordDetail === finalCaptions[finalCaptions.length - 1]
       ) {
-        if (index === finalCaptions.length - 1) {
+        if (wordDetail === finalCaptions[finalCaptions.length - 1]) {
           currentText += wordDetail.punctuated_word + " ";
           endTime = wordDetail.end;
         }
 
         sentences.push({
-          speaker: `Speaker ${currentSpeaker}`,
+          speaker: currentSpeaker,
           transcript: currentText.trim(),
           start: startTime,
           end: endTime,
+          meetingID: meetingID,
         });
+
+        // If we haven't handled this speaker yet, do so now
+        if (!handledSpeakers.includes(currentSpeaker)) {
+          handleNewSpeaker(currentSpeaker);
+          handledSpeakers.push(currentSpeaker);
+        }
 
         currentSpeaker = wordDetail.speaker;
         currentText = wordDetail.punctuated_word + " ";
@@ -207,8 +362,9 @@ export default function Microphone() {
         currentText += wordDetail.punctuated_word + " ";
         endTime = wordDetail.end;
       }
-    });
+    }
 
+    // console.log("Finalized Sentences:", sentences);
     setFinalizedSentences(sentences);
   };
 
@@ -219,9 +375,9 @@ export default function Microphone() {
     }
   }, [finalCaptions]);
 
-  if (isLoadingKey)
-    return <span className="">Loading temporary API key...</span>;
-  if (isLoading) return <span className="">Loading the app...</span>;
+  // if (isLoadingKey)
+  //   return <span className="">Loading temporary API key...</span>;
+  // if (isLoading) return <span className="">Loading the app...</span>;
 
   return (
     <div className="flex flex-col">
@@ -233,6 +389,7 @@ export default function Microphone() {
           }
           size="icon"
           onClick={() => toggleMicrophone()}
+          disabled={isLoadingKey} // Button is disabled if isLoadingKey is true
           className={
             !!userMedia && !!microphone && micOpen
               ? "" // recording enabled
@@ -245,23 +402,17 @@ export default function Microphone() {
             <Mic className="w-6 h-6" />
           )}
         </Button>
-        {/* display is_final responses */}
-        <div className="mt-4">
-          <h2 className="text-lg font-semibold">Finalized Sentences:</h2>
-          <ul>
-            {finalizedSentences.map((sentence, index) => (
-              <li key={index}>
-                {sentence.speaker}: {sentence.transcript} (Start:{" "}
-                {sentence.start.toFixed(2)}, End: {sentence.end.toFixed(2)})
-              </li>
-            ))}
-          </ul>
-        </div>
-        {/* displaying current sentence */}
-        <div className="">{caption}</div>
+        {/* <TranscriptDisplay
+          speakerDetails={speakerDetails}
+          finalizedSentences={finalizedSentences}
+          caption={safeCaption}
+          handleFirstNameChange={handleFirstNameChange}
+          handleLastNameChange={handleLastNameChange}
+          getSpeakerName={getSpeakerName}
+        /> */}
       </div>
       {/* connection indicator for deepgram via socket and temp api key */}
-      <div
+      {/* <div
         className="z-20 flex shrink-0 grow-0 justify-around items-center 
                   fixed bottom-0 right-0 rounded-lg mr-1 mb-5 lg:mr-5 lg:mb-5 xl:mr-10 xl:mb-10 gap-5"
       >
@@ -279,7 +430,7 @@ export default function Microphone() {
             {isListening ? "connected" : "connecting"}
           </Label>
         </Button>
-      </div>
+      </div> */}
     </div>
   );
 }
