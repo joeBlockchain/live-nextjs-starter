@@ -1,190 +1,132 @@
 //import react stuff
-import React from "react";
+import React, { useState } from "react";
 
-//import nextjs stuff
-import Link from "next/link";
+import { format, formatDistanceToNow, isValid } from "date-fns";
+
+//import convex stuff
+import { useMutation, useQuery, useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 
 //import shadcnui stuff
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
+
+//import icone stuff
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+  Dot,
+  Star,
+  Trash2,
+  Circle,
+  CheckCircle,
+  CalendarIcon,
+  Timer,
+} from "lucide-react";
 
-//import icon stuff
-import { Dot, CalendarIcon, Timer } from "lucide-react";
-
-// DATA TO WORK WITH:
-const meetings = [
-  {
-    id: "1",
-    title: "BAF Weekly Meeting",
-    dateAndTime: "Wed 12/27/23 @ 12:09 PM",
-    aging: "2 months ago",
-    duration: "00:27:10",
-    summary:
-      "Discussed the pending status of the dual disclosure initiative, existing procedural compliance issues, particularly with remote account openings, and strategies for addressing gaps in current processes.",
-    sectondarySpeakersCount: "2",
-    primarySpeakers: [
-      {
-        id: "1",
-        firstName: "Jenifer",
-        lastName: "Smith",
-        initials: "JS",
-        participation: "0:12:25",
-      },
-      {
-        id: "2",
-        firstName: "Scott",
-        lastName: "Sparks",
-        initials: "SS",
-        participation: "0:10:25",
-      },
-      {
-        id: "3",
-        firstName: "John",
-        lastName: "Doe",
-        initials: "JD",
-        participation: "0:08:13",
-      },
-      {
-        id: "4",
-        firstName: "Joe",
-        lastName: "Tayloe",
-        initials: "JT",
-        participation: "0:05:13",
-      },
-    ],
-    primaryTopics: [
-      {
-        id: "1",
-        topic: "Dual Disclosure",
-        startTime: "0:00:00",
-        endTime: "0:05:23",
-        duration: "0:05:23",
-      },
-      {
-        id: "2",
-        topic: "Office Clean Sweep Activity",
-        startTime: "0:05:23",
-        endTime: "0:12:34",
-        duration: "0:12:34",
-      },
-      {
-        id: "3",
-        topic: "Recognition",
-        startTime: "0:12:34",
-        endTime: "0:20:47",
-        duration: "0:08:47",
-      },
-      {
-        id: "4",
-        topic: "Upcoming Updates",
-        startTime: "0:20:47",
-        endTime: "0:29:12",
-        duration: "0:09:12",
-      },
-    ],
-  },
-];
-
-//@ts-ignore
-export default function MeetingCard({ meeting }) {
-  return (
-    <Link href={`/mymeetings/${meeting._id}`} passHref>
-      <div>
-        {meetings.map((meeting) => (
-          <button
-            key={meeting.id}
-            className="flex flex-col gap-4 w-full items-start rounded-lg border border-border/80 p-3 text-left text-sm transition-all hover:primary"
-          >
-            <div className="flex w-full flex-col gap-4">
-              <div className="flex items-center">
-                <div className="flex items-center">
-                  <div className="font-semibold text-lg">{meeting.title}</div>
-                </div>
-                <div className="ml-auto text-xs text-muted-foreground">
-                  {meeting.aging}
-                </div>
-              </div>
-              <div className="flex flex-col sm:mt-0 sm:flex-row sm:flex-wrap sm:space-x-6 justify-between">
-                <div className=" flex items-center font-medium text-xs ">
-                  <CalendarIcon
-                    className="mr-1.5 h-5 w-5 flex-shrink-0"
-                    aria-hidden="true"
-                    size={16}
-                    strokeWidth={1}
-                  />
-                  {meeting.dateAndTime}
-                </div>
-                <div className=" flex items-center font-medium text-xs ">
-                  <Timer
-                    className="mr-1.5 h-5 w-5 flex-shrink-0 "
-                    aria-hidden="true"
-                    size={16}
-                    strokeWidth={1}
-                  />
-                  {meeting.duration}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              {meeting.primarySpeakers.map((speaker) => (
-                <div key={speaker.id} className="flex flex-row">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Avatar>
-                          <AvatarImage src="" />
-                          <AvatarFallback>{speaker.initials}</AvatarFallback>
-                        </Avatar>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <div className="flex flex-col lg:flex-row ml-4 items-center">
-                          <p className="">{speaker.firstName}</p>
-                          <p className="">{speaker.lastName}</p>
-                        </div>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              ))}
-              <Avatar>
-                <AvatarImage src="" />
-                <AvatarFallback>{`+${meeting.sectondarySpeakersCount}`}</AvatarFallback>
-              </Avatar>
-            </div>
-            <Accordion type="single" collapsible>
-              <AccordionItem value="item-1">
-                <AccordionTrigger className="text-xs">
-                  More Details
-                </AccordionTrigger>
-                <AccordionContent>
-                  <div className="line-clamp-2 text-sm text-muted-foreground">
-                    {meeting.summary}
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    {meeting.primaryTopics.map((topic) => (
-                      <div key={topic.id} className="flex items-center">
-                        <Dot className="mr-2" /> {topic.topic}
-                      </div>
-                    ))}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </button>
-        ))}
-      </div>
-    </Link>
-  );
+interface MeetingCardProps {
+  meeting: {
+    _id: Id<"meetings">;
+    title: string;
+    _creationTime: number;
+    duration: number;
+    isFavorite: boolean;
+    isDeleted: boolean;
+    isSelected?: boolean;
+  };
+  isSelected: boolean;
+  onToggleSelected: () => void;
 }
+
+const MeetingCard: React.FC<MeetingCardProps> = ({
+  meeting,
+  isSelected,
+  onToggleSelected,
+}) => {
+  const { _id, title, _creationTime, duration, isFavorite, isDeleted } =
+    meeting;
+
+  // Convert _creationTime to a Date object
+  const date = new Date(_creationTime);
+
+  // Check if the date is valid before formatting
+  const formattedDate = isValid(date)
+    ? format(date, "EEE MM/dd/yyyy '@' h:mm a")
+    : "Invalid date";
+  const timeAgo = isValid(date)
+    ? formatDistanceToNow(date, { addSuffix: true })
+    : "Invalid date";
+
+  // Format the duration to a readable format, e.g., "27:10"
+  const formattedDuration = new Date(duration * 1000)
+    .toISOString()
+    .substr(11, 8);
+
+  const toggleFavorite = useMutation(api.meetings.updateMeetingDetails);
+
+  const handleToggleFavorite = async (
+    event: React.MouseEvent<HTMLButtonElement, MouseEvent>
+  ) => {
+    console.log("Toggling favorite:", isFavorite);
+    event.stopPropagation(); // Prevent click from bubbling up to parent elements
+    await toggleFavorite({
+      meetingID: _id as Id<"meetings">,
+      updates: { isFavorite: !isFavorite },
+    });
+  };
+
+  return (
+    <div className="group relative rounded-xl border bg-card text-card-foreground p-6 pb-8">
+      <Toggle
+        size="sm"
+        className="absolute top-2 right-2"
+        pressed={isSelected}
+        aria-label="Toggle selected"
+        onClick={(event) => {
+          event.stopPropagation(); // Prevent click from bubbling up to parent elements
+          onToggleSelected();
+        }}
+      >
+        {isSelected ? (
+          <Circle size={20} fill="white" strokeWidth={0} />
+        ) : (
+          <Circle size={20} className="hidden group-hover:block" />
+        )}
+      </Toggle>
+
+      <div className="flex flex-col space-y-3">
+        <div className="flex flex-row items-center space-x-2">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <Toggle
+            size="sm"
+            className=""
+            pressed={isFavorite}
+            aria-label="Toggle favorite"
+            onClick={(event) => handleToggleFavorite(event)}
+          >
+            {/* Change here: Apply conditional rendering based on isFavorite */}
+            {isFavorite ? (
+              <Star size={20} fill="white" strokeWidth={0} />
+            ) : (
+              <Star size={20} className="hidden group-hover:block" />
+            )}
+          </Toggle>
+        </div>
+        <div className="flex flex-row items-center space-x-2">
+          <CalendarIcon size={16} />
+          <p className="text-sm">{formattedDate}</p>
+        </div>
+        <div className="flex flex-row space-x-2 items-center">
+          <Timer size={16} />
+          <p className="text-sm">{formattedDuration}</p>
+        </div>
+        <p className="absolute bottom-3 right-3 text-sm text-muted-foreground">
+          {timeAgo}
+        </p>
+      </div>
+      {/* Add more details here as needed */}
+    </div>
+  );
+};
+
+export default MeetingCard;
