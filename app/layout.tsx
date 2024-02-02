@@ -5,9 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 import {
-  ClerkProvider,
   SignInButton,
-  SignOutButton,
   UserButton,
   SignUpButton,
   SignedIn,
@@ -15,12 +13,8 @@ import {
 } from "@clerk/nextjs";
 import { ReactNode } from "react";
 
-import { ThemeProvider } from "@/components/theme-provider";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
-
-import ConvexClientProvider from "@/components/convex-client-provider";
-import { ConvexProviderWithClerk } from "convex/react-clerk";
 
 import { Providers } from "@/components/providers";
 
@@ -36,7 +30,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Live transcription by Deepgram in Next.js</title>
+        <title>AI Note Taker</title>
       </head>
       <body className={inter.className}>
         <Providers>
