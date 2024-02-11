@@ -49,7 +49,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
       >
         <RotateCcw size={16} />
       </Button> */}
-      <Button
+      {/* <Button
         variant="ghost"
         size="sm"
         onClick={() => onThumbsDown(messageId)}
@@ -57,7 +57,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
         title="Thumbs Down"
       >
         <ThumbsDown size={16} />
-      </Button>
+      </Button> */}
     </div>
   );
 };

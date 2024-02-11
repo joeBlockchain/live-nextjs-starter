@@ -221,12 +221,19 @@ export default function NoteContainer({
     }
   };
 
-  const generateMailToLink = (summaries: MeetingSummary[]) => {
-    const emailSubject = encodeURIComponent("Meeting Summary");
-    const emailBody = encodeURIComponent(
-      summaries.map((summary) => summary.aiSummary).join("\n\n")
-    );
-    return `mailto:?subject=${emailSubject}&body=${emailBody}`;
+  // Add this function to handle copying the meeting summary to the clipboard
+  const copySummaryToClipboard = async () => {
+    const summaryText = meetingSummaries
+      .map((summary) => summary.aiSummary)
+      .join("\n\n");
+    try {
+      await navigator.clipboard.writeText(summaryText);
+      console.log("Summary copied to clipboard");
+      // Optionally, update state or show a notification to the user indicating success
+    } catch (err) {
+      console.error("Failed to copy summary: ", err);
+      // Optionally, show an error message to the user
+    }
   };
 
   return (
@@ -262,16 +269,6 @@ export default function NoteContainer({
               size={16}
             />
           </Button>
-          <Button
-            variant="outline"
-            className="space-x-2"
-            onClick={() => {
-              const mailtoLink = generateMailToLink(meetingSummaries);
-              window.location.href = mailtoLink;
-            }}
-          >
-            <span>Send</span> <Mail />
-          </Button>
           {/* 2/10 Disable Append or Replace summary as its not needed */}
           {/* <TooltipProvider>
             <Tooltip>
@@ -297,6 +294,13 @@ export default function NoteContainer({
           </TooltipProvider> */}
         </div>
       </div>
+      <Button
+        variant="ghost"
+        className="absolute right-0 top-10 space-x-2 z-50"
+        onClick={copySummaryToClipboard}
+      >
+        <span>Copy</span> <Clipboard />
+      </Button>
       <ScrollArea className="h-[calc(100vh-260px)] md:h-[calc(100vh-305px)]">
         {/* //insert div with meeting summary */}
         <div className="">
