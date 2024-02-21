@@ -58,6 +58,18 @@ interface ChatMessage {
   content: string;
 }
 
+interface Message {
+  _id: Id<"messages">; // System field
+  _creationTime: Date; // System field
+  aiModel: string;
+  aiResponse: string;
+  completionTokens: number; // float64 in Convex schema maps to number in TypeScript
+  meetingID: string; // Assuming v.id("meetings") returns a string identifier
+  promptTokens: number;
+  userId: string;
+  userMessage: string;
+}
+
 export interface FinalizedSentence {
   speaker: number;
   transcript: string;
@@ -406,12 +418,6 @@ export default function ChatCompletion({
                   start,
                   transcript,
                 })
-              );
-
-              console.log("trimmedSpeakerDetails", trimmedSpeakerDetails);
-              console.log(
-                "trimmedFinalizedSentences",
-                trimmedFinalizedSentences
               );
 
               // Include the updatedChatHistory in the sendMessage call

@@ -1,6 +1,19 @@
 import { v } from "convex/values";
-import { action, mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
+import {
+  query,
+  action,
+  internalMutation,
+  mutation,
+  internalAction,
+  internalQuery,
+} from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import { Doc, Id } from "./_generated/dataModel";
+
+interface EmbeddingDetail {
+  meetingID: string;
+  finalizedSentenceId: string;
+}
 
 export const storeFinalizedSentence = mutation({
   args: {
@@ -10,18 +23,188 @@ export const storeFinalizedSentence = mutation({
     start: v.float64(),
     end: v.float64(),
   },
-  async handler({ db, auth }, { meetingID, speaker, transcript, start, end }) {
+  async handler(
+    { db, auth, scheduler },
+    { meetingID, speaker, transcript, start, end }
+  ) {
     const user = await auth.getUserIdentity();
     if (!user) {
       throw new Error("User not authenticated");
     }
-    await db.insert("finalizedSentences", {
+    const finalizedSentenceId = await db.insert("finalizedSentences", {
       meetingID,
       speaker,
       transcript,
       start,
       end,
     });
+    // Schedule the action to generate and add embedding
+    return finalizedSentenceId;
+  },
+});
+
+export const generateAndSaveEmbedding = action({
+  args: {
+    finalizedSentenceId: v.id("finalizedSentences"),
+    transcript: v.string(),
+    meetingID: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    // Generate embedding
+    const embedding = await generateTextEmbedding(args.transcript);
+    // Store the embedding
+    await ctx.runMutation(internal.transcript.addEmbedding, {
+      finalizedSentenceId: args.finalizedSentenceId,
+      embedding: embedding,
+      meetingID: args.meetingID,
+    });
+
+    return embedding;
+  },
+});
+
+export const generateTextEmbedding = async (
+  text: string
+): Promise<number[]> => {
+  const key = process.env.RUNPOD_API_KEY;
+  if (!key) {
+    throw new Error("RUNPOD_API_KEY environment variable not set!");
+  }
+  const requestBody = {
+    input: {
+      sentence: text,
+    },
+  };
+
+  const response = await fetch(`${process.env.RUNPOD_RUNSYNC_URL}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const msg = await response.text();
+    throw new Error(`RunPod API error: ${msg}`);
+  }
+
+  const data = await response.json();
+  // Adjusted to correctly access the embeddings array within the output object
+  const embedding = data.output.embeddings;
+  if (!Array.isArray(embedding) || embedding.some(isNaN)) {
+    console.error("Invalid embedding format:", embedding);
+    throw new Error(
+      "Failed to generate a valid text embedding due to invalid format."
+    );
+  }
+
+  // console.log(
+  //   `Computed embedding of "${text}": ${embedding.length} dimensions`
+  // );
+  return embedding;
+};
+
+export const addEmbedding = internalMutation({
+  args: {
+    finalizedSentenceId: v.id("finalizedSentences"),
+    embedding: v.array(v.float64()),
+    meetingID: v.id("meetings"),
+  },
+  handler: async ({ db }, { finalizedSentenceId, embedding, meetingID }) => {
+    await db.insert("sentenceEmbeddings", {
+      meetingID, // This needs to be included
+      finalizedSentenceId,
+      embedding,
+    });
+  },
+});
+
+//@ts-ignore
+export const searchSentencesByEmbedding = action({
+  args: {
+    searchQuery: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Generate an embedding from the search query
+    const embedding = await generateTextEmbedding(args.searchQuery);
+
+    // Perform a vector search with the generated embedding
+    const results = await ctx.vectorSearch(
+      "sentenceEmbeddings",
+      "embeddingVector",
+      {
+        vector: embedding,
+        limit: 10,
+      }
+    );
+
+    // Fetch additional details for each result using the internal query
+    const resultsWithDetails: (EmbeddingDetail & { score: number })[] =
+      await Promise.all(
+        results.map(async (result) => {
+          const details = await ctx.runQuery(
+            internal.transcript.fetchEmbeddingDetails,
+            {
+              embeddingId: result._id,
+            }
+          );
+          // Merge the score from the search result with the fetched details
+          return { ...details, score: result._score };
+        })
+      );
+    return resultsWithDetails;
+  },
+});
+
+export const fetchEmbeddingDetails = internalQuery({
+  args: { embeddingId: v.id("sentenceEmbeddings") },
+  handler: async (ctx, { embeddingId }) => {
+    const embeddingDetails = await ctx.db.get(embeddingId);
+    if (!embeddingDetails) {
+      throw new Error("Embedding details not found");
+    }
+    return {
+      meetingID: embeddingDetails.meetingID,
+      finalizedSentenceId: embeddingDetails.finalizedSentenceId,
+    };
+  },
+});
+
+export const fetchFinalizedSentences = internalQuery({
+  args: { ids: v.array(v.id("finalizedSentences")) },
+  handler: async (ctx, args) => {
+    const results = [];
+    for (const id of args.ids) {
+      const doc = await ctx.db.get(id);
+      if (doc === null) {
+        continue;
+      }
+      results.push(doc);
+    }
+    return results;
+  },
+});
+
+export const fetchMultipleFinalizedSentenceDetails = query({
+  args: { sentenceIds: v.array(v.id("finalizedSentences")) },
+  handler: async (ctx, { sentenceIds }) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error(
+        "Please login to retrieve finalized sentences for a meeting"
+      );
+    }
+
+    const sentences = await Promise.all(
+      sentenceIds.map(async (id) => await ctx.db.get(id))
+    );
+
+    console.log("Fetched sentences:", sentences);
+
+    return sentences.filter((sentence) => sentence !== null);
   },
 });
 
@@ -40,6 +223,19 @@ export const getFinalizedSentencesByMeeting = query({
       .query("finalizedSentences")
       .filter((q) => q.eq(q.field("meetingID"), args.meetingID))
       .collect();
+  },
+});
+
+export const deleteFinalizedSentence = mutation({
+  args: {
+    sentenceId: v.id("finalizedSentences"), // Assuming "finalizedSentences" is the collection name
+  },
+  async handler({ db, auth }, { sentenceId }) {
+    const user = await auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+    await db.delete(sentenceId); // Delete the sentence by its ID
   },
 });
 
@@ -144,16 +340,16 @@ export const processAudioEmbedding = action({
     }
     try {
       const audioUrl = (await storage.getUrl(storageId)) as string;
-      const runpodResponse = await postToRunpod(audioUrl);
+      const runpodResponse = await postAudioToRunpod(audioUrl);
 
-      console.log("Runpod response data:", runpodResponse);
+      // console.log("Runpod response data:", runpodResponse);
     } catch (error) {
       console.error("Failed to fetch transcript:", error);
     }
   },
 });
 
-async function postToRunpod(audioUrl: string): Promise<any> {
+async function postAudioToRunpod(audioUrl: string): Promise<any> {
   const requestBody = {
     input: {
       audio_file: audioUrl,
