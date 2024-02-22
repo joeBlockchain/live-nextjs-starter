@@ -78,7 +78,7 @@ export default defineSchema({
   }).vectorIndex("embeddingVector", {
     vectorField: "embedding",
     dimensions: 1024, // Adjust based on your actual embedding size
-    filterFields: ["finalizedSentenceId", "meetingID"],
+    filterFields: ["finalizedSentenceId", "meetingID", "userId"],
   }),
   userSettings: defineTable({
     language: v.string(),

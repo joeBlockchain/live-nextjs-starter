@@ -157,6 +157,14 @@ export const searchSentencesByEmbedding = action({
     searchQuery: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to create an embedding.");
+    }
+
+    const currentUserID = user.subject;
+
     // Generate an embedding from the search query
     const embedding = await generateTextEmbedding(args.searchQuery);
 
@@ -167,6 +175,7 @@ export const searchSentencesByEmbedding = action({
       {
         vector: embedding,
         limit: 10,
+        filter: (q) => q.eq("userId", currentUserID),
       }
     );
 
