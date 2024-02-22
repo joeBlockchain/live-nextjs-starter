@@ -387,7 +387,7 @@ export default function Microphone({
       microphone.stop();
 
       //save final words
-      // console.log("Finalized Sentences:", finalizedSentences); // Log the finalized sentences when stopping the recording
+      console.log("Finalized Sentences:", finalizedSentences); // Log the finalized sentences when stopping the recording
       finalCaptions.forEach(async (caption) => {
         try {
           const result = await storeWordDetail({
@@ -784,10 +784,12 @@ export default function Microphone({
     const storeData = async () => {
       if (finalizedSentences.length > 1) {
         // Ensure there's at least one sentence to store
-        const lastSentenceIndex = finalizedSentences.length - 2; // Correctly define lastSentenceIndex here
+        const lastSentenceIndex = finalizedSentences.length - 2;
+
         const lastSentence = finalizedSentences[lastSentenceIndex];
-        const currentSpeaker =
-          finalizedSentences[finalizedSentences.length - 1].speaker;
+        const currentSentence =
+          finalizedSentences[finalizedSentences.length - 1];
+        const currentSpeaker = currentSentence.speaker;
 
         if (
           lastSpeakerRef.current !== null &&
@@ -800,9 +802,8 @@ export default function Microphone({
             start: lastSentence.start,
             end: lastSentence.end,
           });
-
           if (sentenceID) {
-            // Consider doing something with the sentence ID
+            //consider doing something with the sentenceID
           } else {
             console.error("Failed to store sentence, sentenceID is void.");
           }
