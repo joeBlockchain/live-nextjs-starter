@@ -73,6 +73,7 @@ export default defineSchema({
   sentenceEmbeddings: defineTable({
     meetingID: v.id("meetings"),
     finalizedSentenceId: v.id("finalizedSentences"),
+    userId: v.optional(v.string()),
     embedding: v.array(v.float64()),
   }).vectorIndex("embeddingVector", {
     vectorField: "embedding",

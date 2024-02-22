@@ -41,6 +41,25 @@ export const backfillUserIdInFinalizedSentences = internalMutation({
   },
 });
 
+export const backfillUserIdInSentencesEmbeddings = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Fetch all finalizedSentences documents
+    const embeddings = await ctx.db.query("sentenceEmbeddings").collect();
+
+    for (const embedding of embeddings) {
+      // Assuming you can get the userId from the meetingID
+      const meeting = await ctx.db.get(embedding.meetingID);
+      if (meeting && meeting.userId) {
+        // Update the finalizedSentence document with the userId
+        await ctx.db.patch(embedding._id, {
+          userId: meeting.userId,
+        });
+      }
+    }
+  },
+});
+
 export const createEmbeddingsforFinalizedSentencesInMeetingID = action({
   args: { meetingId: v.id("meetings") },
   handler: async (ctx, args) => {
