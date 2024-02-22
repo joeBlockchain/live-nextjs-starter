@@ -63,6 +63,12 @@ export const backfillUserIdInSentencesEmbeddings = internalMutation({
 export const createEmbeddingsforFinalizedSentencesInMeetingID = action({
   args: { meetingId: v.id("meetings") },
   handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to create an embedding.");
+    }
+
     const sentences: FinalizedSentence[] = await ctx.runQuery(
       internal.generateEmbeddings.fetchFinalizedSentencesByMeetingId,
       {
@@ -72,7 +78,7 @@ export const createEmbeddingsforFinalizedSentencesInMeetingID = action({
 
     for (const sentence of sentences) {
       // Generate and save the embedding
-      await ctx.runAction(api.transcript.generateAndSaveEmbedding, {
+      await ctx.runAction(api.generateEmbeddings.generateAndSaveEmbedding, {
         finalizedSentenceId: sentence._id,
         transcript: sentence.transcript,
         meetingID: sentence.meetingID,
@@ -102,6 +108,12 @@ export const generateAndSaveEmbedding = action({
     meetingID: v.id("meetings"),
   },
   handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to create an embedding.");
+    }
+
     // Generate embedding
     const embedding = await generateTextEmbedding(args.transcript);
     // Store the embedding
@@ -111,6 +123,7 @@ export const generateAndSaveEmbedding = action({
         finalizedSentenceId: args.finalizedSentenceId,
         embedding: embedding,
         meetingID: args.meetingID,
+        userId: user.subject,
       }
     );
 
@@ -179,12 +192,22 @@ export const addEmbedding = internalMutation({
     finalizedSentenceId: v.id("finalizedSentences"),
     embedding: v.array(v.float64()),
     meetingID: v.id("meetings"),
+    userId: v.string(),
   },
-  handler: async ({ db }, { finalizedSentenceId, embedding, meetingID }) => {
-    const embeddingId = await db.insert("sentenceEmbeddings", {
-      meetingID, // This needs to be included
-      finalizedSentenceId,
-      embedding,
+  handler: async (ctx, args) => {
+    //   handler: async ({ db }, { finalizedSentenceId, embedding, meetingID }) => {
+
+    // const user = await ctx.auth.getUserIdentity();
+
+    // if (!user) {
+    //   throw new Error("Please login to create a meeting");
+    // }
+
+    const embeddingId = await ctx.db.insert("sentenceEmbeddings", {
+      meetingID: args.meetingID, // This needs to be included
+      finalizedSentenceId: args.finalizedSentenceId,
+      embedding: args.embedding,
+      userId: args.userId,
     });
     return embeddingId;
   },
