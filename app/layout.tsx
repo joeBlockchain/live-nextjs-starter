@@ -4,6 +4,9 @@ import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
 
+//import next stuff
+import Link from "next/link";
+
 //import clerk stuff
 import {
   SignInButton,
@@ -11,6 +14,7 @@ import {
   SignUpButton,
   SignedIn,
   SignedOut,
+  useUser,
 } from "@clerk/nextjs";
 import { ReactNode } from "react";
 
@@ -18,6 +22,9 @@ import { ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
+
+//import icons
+import { LayoutDashboard } from "lucide-react";
 
 //import custom stuff
 import { Providers } from "@/components/providers";
@@ -44,7 +51,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <div className="h-screen w-screen max-w-7xl mx-auto">
             <div className="sticky top-0 z-50 border-b border-border/40 backdrop-blur">
               <nav className="flex justify-between items-center h-16 mx-4 ">
-                <span className="text-xl font-bold">MeetingNotes-AI</span>
+                <Link href="/">
+                  <span className="text-xl font-bold">MeetingNotes-AI</span>
+                </Link>
                 <div className="flex items-center space-x-4">
                   <SignedIn>
                     <UserButton afterSignOutUrl="/" />

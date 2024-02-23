@@ -46,6 +46,19 @@ export const getMeetingsForUser = query({
   },
 });
 
+export const getMeetings = query({
+  args: {},
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to retrieve list of meetings");
+    }
+
+    return await ctx.db.query("meetings").order("desc").collect();
+  },
+});
+
 export const getMeetingByID = query({
   args: {
     meetingID: v.id("meetings"),

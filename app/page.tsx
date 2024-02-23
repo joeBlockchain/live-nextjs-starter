@@ -6,10 +6,9 @@ import { api } from "@/convex/_generated/api";
 
 //import next stuff
 import Image from "next/image";
+import Link from "next/link";
 
-//import icons
-import { CalendarCheck2, ArrowRight } from "lucide-react";
-
+//import clerk stuff
 import {
   ClerkProvider,
   SignInButton,
@@ -18,15 +17,20 @@ import {
   SignUpButton,
   SignedIn,
   SignedOut,
+  useUser,
 } from "@clerk/nextjs";
-
-import Link from "next/link";
 
 //import shadcnui stuff
 import { Button } from "@/components/ui/button";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
 
+//import icons
+import { CalendarCheck2, ArrowRight, LayoutDashboard } from "lucide-react";
+
 export default function Home() {
+  const { user } = useUser();
+  const isPowerUser = user?.publicMetadata?.isPowerUser === "true";
+
   return (
     <main className="flex flex-col h-full w-full">
       <div className="relative max-w-5xl mx-auto pt-20 sm:pt-24 lg:pt-32">
@@ -63,15 +67,21 @@ export default function Home() {
           </code>
           note taking application here to help with your next meeting!
         </p>
-
         <div className="mt-8 flex justify-center">
           <SignedIn>
             <Link href="/mymeetings">
               <Button className="mr-3 pr-6">
-                <CalendarCheck2 className="mr-3 h-5 w-5" />
+                <CalendarCheck2 className="mr-3" />
                 Previous Meetings
               </Button>
             </Link>
+            {isPowerUser && (
+              <Link href="/dashboard">
+                <Button variant="outline" className="">
+                  <LayoutDashboard className="mr-3" /> Dashboard
+                </Button>
+              </Link>
+            )}
           </SignedIn>
           <SignedOut>
             <div className="flex items-center space-x-4">

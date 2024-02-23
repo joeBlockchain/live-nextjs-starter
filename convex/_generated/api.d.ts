@@ -15,6 +15,8 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as chat from "../chat.js";
+import type * as cleanUpFunctions from "../cleanUpFunctions.js";
+import type * as dashboard from "../dashboard.js";
 import type * as generateEmbeddings from "../generateEmbeddings.js";
 import type * as meetingSummary from "../meetingSummary.js";
 import type * as meetings from "../meetings.js";
@@ -30,6 +32,8 @@ import type * as transcript from "../transcript.js";
  */
 declare const fullApi: ApiFromModules<{
   chat: typeof chat;
+  cleanUpFunctions: typeof cleanUpFunctions;
+  dashboard: typeof dashboard;
   generateEmbeddings: typeof generateEmbeddings;
   meetingSummary: typeof meetingSummary;
   meetings: typeof meetings;

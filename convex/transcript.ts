@@ -31,6 +31,10 @@ export const storeFinalizedSentence = mutation({
     if (!user) {
       throw new Error("User not authenticated");
     }
+
+    // Count the words in the transcript
+    const wordCount = transcript.split(/\s+/).filter(Boolean).length;
+
     const finalizedSentenceId = await db.insert("finalizedSentences", {
       meetingID,
       userId: user.subject,
@@ -38,6 +42,7 @@ export const storeFinalizedSentence = mutation({
       transcript,
       start,
       end,
+      wordCount,
     });
     // Schedule the action to generate and add embedding
     return finalizedSentenceId;

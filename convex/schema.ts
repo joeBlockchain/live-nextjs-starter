@@ -10,6 +10,7 @@ export default defineSchema({
     start: v.float64(),
     transcript: v.string(),
     sentenceEmbeddingId: v.optional(v.id("sentenceEmbeddings")),
+    wordCount: v.optional(v.number()),
   }).index("by_meetingID", ["meetingID"]),
   meetings: defineTable({
     title: v.string(),
