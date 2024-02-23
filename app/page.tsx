@@ -57,17 +57,19 @@ export default function Home() {
             className="border border-foreground rounded-md p-2 ml-4"
           /> */}
         </div>
-        <h1 className="mt-5 font-extrabold text-4xl sm:text-5xl lg:text-6xl tracking-tight text-center">
-          Anyone taking notes?
-        </h1>
-        <p className="mt-6 text-lg text-center max-w-3xl mx-8">
-          Hi, I am just your friendly{" "}
-          <code className="font-mono font-medium text-blue-500 dark:text-blue-400">
-            Speech to Text, Audio Embedding, Diarization, Generative AI{" "}
-          </code>
-          note taking application here to help with your next meeting!
-        </p>
-        <div className="mt-8 flex justify-center">
+        <div className="flex flex-col justify-center items-center">
+          <h1 className="mt-5 font-extrabold text-4xl sm:text-5xl lg:text-6xl tracking-tight text-center">
+            Anyone taking notes?
+          </h1>
+          <p className="mt-6 text-lg text-center max-w-3xl">
+            Hi, I am just your friendly{" "}
+            <code className="font-mono font-medium text-blue-500 dark:text-blue-400">
+              Speech to Text, Audio Embedding, Diarization, Generative AI{" "}
+            </code>
+            note taking application here to help with your next meeting!
+          </p>
+        </div>
+        <div className="mt-10 flex justify-center">
           <SignedIn>
             <Link href="/mymeetings">
               <Button className="mr-3 pr-6">
@@ -93,6 +95,25 @@ export default function Home() {
               </Button>
             </div>
           </SignedOut>
+        </div>
+        <div className="my-40 p-2 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-border">
+          <Image
+            src="/Light-1.png"
+            alt="Screenshot of SaaS Application"
+            width={600}
+            height={400}
+            layout="responsive"
+            className="rounded-xl border border-border shadow-2xl dark:hidden"
+          />
+          <Image
+            src="/Dark-1.png"
+            alt="Screenshot of SaaS Application"
+            width={600}
+            height={400}
+            layout="responsive"
+            className="rounded-xl border border-border shadow-2xl hidden dark:block"
+          />
+          {/* Additional content */}
         </div>
       </div>
     </main>
