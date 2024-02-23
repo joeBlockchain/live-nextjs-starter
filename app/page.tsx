@@ -98,7 +98,7 @@ export default function Home() {
         </div>
         <div className="my-40 p-2 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-border w-7xl mx-auto">
           <Image
-            src="/Light-1.png"
+            src="/light-1.png"
             alt="Screenshot of SaaS Application"
             width={2546}
             height={1796}
@@ -106,7 +106,7 @@ export default function Home() {
             className="rounded-xl border border-border shadow-2xl dark:hidden"
           />
           <Image
-            src="/Dark-1.png"
+            src="/dark-1.png"
             alt="Screenshot of SaaS Application"
             width={2536}
             height={1794}
