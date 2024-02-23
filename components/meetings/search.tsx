@@ -74,7 +74,7 @@ export const SearchCommand = ({ onSearchComplete }: SearchCommandProps) => {
         className="w-full pl-5 rounded-l-full leading-tight"
         id="search"
         type="text"
-        placeholder="Search..."
+        placeholder="Search transcripts..."
         value={inputValue}
         onChange={handleInputChange}
         onKeyDown={handleKeyDown}

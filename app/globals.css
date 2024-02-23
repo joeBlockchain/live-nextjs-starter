@@ -24,6 +24,9 @@
     --input: 0 0% 89.8%;
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
+    --rag-green: 161.4, 93.5%, 30.4%;
+    --rag-amber: 32.1, 94.6%, 43.7%;
+    --rag-red: 0, 73.7%, 41.8%;
     --logo-filter: invert(100%);
   }
 
@@ -47,6 +50,9 @@
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
+    --rag-green: 161.4, 93.5%, 30.4%;
+    --rag-amber: 32.1, 94.6%, 43.7%;
+    --rag-red: 0, 73.7%, 41.8%;
     --logo-filter: invert(100%);
   }
 }
