@@ -10,7 +10,6 @@ import { api } from "@/convex/_generated/api";
 //import next stuff
 import Image from "next/image";
 import Link from "next/link";
-import { useTheme } from "next-themes";
 
 //import clerk stuff
 import {
