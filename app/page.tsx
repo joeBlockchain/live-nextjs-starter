@@ -58,7 +58,7 @@ export default function Home() {
           /> */}
         </div>
         <div className="flex flex-col justify-center items-center">
-          <h1 className="mt-5 font-extrabold text-4xl sm:text-5xl lg:text-6xl tracking-tight text-center">
+          <h1 className="mt-8 font-extrabold text-4xl sm:text-5xl lg:text-6xl tracking-tight text-center">
             Anyone taking notes?
           </h1>
           <p className="mt-6 text-lg text-center max-w-3xl">
@@ -96,20 +96,20 @@ export default function Home() {
             </div>
           </SignedOut>
         </div>
-        <div className="my-40 p-2 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-border">
+        <div className="my-40 p-2 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-border w-7xl mx-auto">
           <Image
-            src="/Light-1.png"
+            src="/light-1.png"
             alt="Screenshot of SaaS Application"
-            width={600}
-            height={400}
+            width={2546}
+            height={1796}
             layout="responsive"
             className="rounded-xl border border-border shadow-2xl dark:hidden"
           />
           <Image
-            src="/Dark-1.png"
+            src="/dark-1.png"
             alt="Screenshot of SaaS Application"
-            width={600}
-            height={400}
+            width={2536}
+            height={1794}
             layout="responsive"
             className="rounded-xl border border-border shadow-2xl hidden dark:block"
           />
