@@ -1,5 +1,8 @@
 "use client";
 
+//import react stuff
+import { useEffect, useState } from "react";
+
 //import convex stuff
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -23,6 +26,7 @@ import {
 //import shadcnui stuff
 import { Button } from "@/components/ui/button";
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { Skeleton } from "@/components/ui/skeleton";
 
 //import icons
 import { CalendarCheck2, ArrowRight, LayoutDashboard } from "lucide-react";
@@ -88,10 +92,10 @@ export default function Home() {
           <SignedOut>
             <div className="flex items-center space-x-4">
               <Button variant="link">
-                <SignInButton afterSignInUrl="/mymeetings" />
+                <SignInButton afterSignInUrl="/" />
               </Button>
               <Button variant="default">
-                <SignUpButton afterSignUpUrl="/mymeetings" />
+                <SignUpButton afterSignUpUrl="/" />
               </Button>
             </div>
           </SignedOut>
