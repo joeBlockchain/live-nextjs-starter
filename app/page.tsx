@@ -92,10 +92,10 @@ export default function Home() {
           <SignedOut>
             <div className="flex items-center space-x-4">
               <Button variant="link">
-                <SignInButton afterSignInUrl="/mymeetings" />
+                <SignInButton afterSignInUrl="/" />
               </Button>
               <Button variant="default">
-                <SignUpButton afterSignUpUrl="/mymeetings" />
+                <SignUpButton afterSignUpUrl="/" />
               </Button>
             </div>
           </SignedOut>

@@ -69,7 +69,7 @@ export const SearchResults: React.FC<SearchResultsProps> = ({
     meetingIds,
   });
 
-  console.log(speakers, meetingDetails, sentenceDetails);
+  // console.log(speakers, meetingDetails, sentenceDetails);
 
   // You can now also use other data from searchResults, like score, if needed
   if (!sentenceDetails) return <div>Loading...</div>;
