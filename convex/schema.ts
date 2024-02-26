@@ -33,7 +33,7 @@ export default defineSchema({
   })
     .index("by_meetingID", ["meetingID"])
     .index("by_userId_meetingID", ["userId", "meetingID"]),
-  speakers: defineTable({
+  meetingSpeakers: defineTable({
     meetingID: v.id("meetings"),
     speakerNumber: v.number(),
     firstName: v.string(),

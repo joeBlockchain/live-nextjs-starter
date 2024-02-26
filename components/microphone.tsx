@@ -136,7 +136,10 @@ export default function Microphone({
   const [audioBlobs, setAudioBlobs] = useState<Blob[]>([]);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   // const [finalCaptions, setFinalCaptions] = useState<WordDetail[]>([]);
-  const lastSpeakerRef = useRef<number | null>(null); //used for detecting speaker changes in finalized sentences so we write to the db when the speaker finishes
+  //used for detecting speaker changes in finalized sentences so we write to the db when the speaker finishes
+  const lastSpeakerRef = useRef<number | null>(null);
+  const [lastFinalizedSentenceIndexSaved, setLastFinalizedSentenceIndexSaved] =
+    useState<number | null>(null);
 
   const retrieveSummary = useAction(api.meetingSummary.retrieveMeetingSummary);
 
@@ -251,7 +254,7 @@ export default function Microphone({
 
   // Function to handle new speakers
   const handleNewSpeaker = useCallback(
-    async (speakerNumber: number, finalizedSentenceIndex?: number) => {
+    async (speakerNumber: number) => {
       // Check if the speaker already exists
       if (
         !speakerDetails.some((detail) => detail.speakerNumber === speakerNumber)
@@ -269,15 +272,7 @@ export default function Microphone({
         setSpeakerDetails((prevDetails) => [...prevDetails, newSpeaker]);
       }
     },
-    [
-      speakerDetails,
-      meetingID,
-      setSpeakerDetails,
-      // runGetNearestMatchingSpeakers,
-      // finalizedSentences,
-      // audioBlobs,
-      // uploadAudioToConvexFiles,
-    ]
+    [speakerDetails, meetingID, setSpeakerDetails]
   );
 
   const handleFirstNameChange = (id: number, newFirstName: string) => {
@@ -817,26 +812,8 @@ export default function Microphone({
 
           // If we haven't handled this speaker yet, do so now
           if (!handledSpeakers.includes(currentSpeaker)) {
-            handleNewSpeaker(currentSpeaker, finalizedSentences.length);
+            handleNewSpeaker(currentSpeaker);
             handledSpeakers.push(currentSpeaker);
-
-            // console.log("sentenceIndex", sentenceIndex);
-            // console.log("Handling new speaker:", currentSpeaker);
-            // console.log("Sentence:", currentText.trim());
-            //console.log("finalizedSentences", finalizedSentences);
-
-            // const sectionAudioBlob = generateAudioBlobForSentence(
-            //   finalizedSentences[sentenceIndex],
-            //   audioBlobs
-            // );
-
-            // console.log("sectionAudioBlob", sectionAudioBlob);
-
-            // const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
-            // console.log("storageId", storageId);
-            // // //@ts-ignore
-            // const matches = await runGetNearestMatchingSpeakers(storageId);
-            // console.log("Matches:", matches);
           }
 
           currentSpeaker = wordDetail.speaker;
@@ -856,84 +833,59 @@ export default function Microphone({
     [meetingID, handleNewSpeaker, setFinalizedSentences]
   );
 
-  //detect when speakerchanges in finalized sentence
+  //detect when speakerchanges in finalized sentences and save the last sentence to the db
   useEffect(() => {
-    const storeData = async () => {
-      if (finalizedSentences.length > 1) {
-        // Ensure there's at least one sentence to store
-        const lastSentenceIndex = finalizedSentences.length - 2;
+    const handleFinalizedSentencesChange = async () => {
+      let currentLength = finalizedSentences.length;
+      // Your logic here to handle changes in finalizedSentences
+      if (currentLength > 1) {
+        // if greater than 2 then we have our first complete sentence from our first speaker
+        const lastSentence = finalizedSentences[currentLength - 2];
 
-        const lastSentence = finalizedSentences[lastSentenceIndex];
-        const currentSentence =
-          finalizedSentences[finalizedSentences.length - 1];
-        const currentSpeaker = currentSentence.speaker;
+        console.log("saving Last sentence:", lastSentence);
 
-        if (
-          lastSpeakerRef.current !== null &&
-          lastSpeakerRef.current !== currentSpeaker
-        ) {
-          const sentenceID = await storeFinalizedSentence({
-            meetingID: meetingID,
-            speaker: lastSentence.speaker,
-            transcript: lastSentence.transcript,
-            start: lastSentence.start,
-            end: lastSentence.end,
-          });
-
-          //REVIST TO RETRIVE EMBEDDINGS WHEN SPEAKER CHANGES, below is testing to generate and save embeddings during testing thats now moved to on stop method
-
-          // // get the start and end index of the section to slice from the array of aydio blobs that are emited from mediarecorder in 500 millisecond increments
-          // const startIndex = Math.ceil(lastSentence.start / 0.5);
-          // const endIndex = Math.floor(lastSentence.end / 0.5);
-
-          // // Include the first blob for header information
-          // const headerBlob = audioBlobs[0];
-          // // Slice the section from startIndex to endIndex
-          // const sectionBlobs: Blob[] = audioBlobs.slice(
-          //   startIndex,
-          //   endIndex + 1
-          // ); // Adjusted to include endIndex
-          // // Combine the header blob with the section blobs
-          // const combinedBlobs = [headerBlob, ...sectionBlobs];
-
-          // const sectionAudioBlob = new Blob(combinedBlobs, {
-          //   type: "audio/webm",
-          // });
-
-          // uploadAudioBlob(sectionAudioBlob, lastSentence.speaker);
-
-          const sectionAudioBlob = generateAudioBlobForSentence(
-            lastSentence,
-            audioBlobs
-          );
-          const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
-          const matches = await runGetNearestMatchingSpeakers({
-            storageId: storageId as Id<"_storage">,
-          });
-          console.log("Matches:", matches);
-
-          if (sentenceID) {
-            //consider doing something with the sentenceID
-          } else {
-            console.error("Failed to store sentence, sentenceID is void.");
-          }
+        const sentenceID = await storeFinalizedSentence({
+          meetingID: meetingID,
+          speaker: lastSentence.speaker,
+          transcript: lastSentence.transcript,
+          start: lastSentence.start,
+          end: lastSentence.end,
+        });
+        const sectionAudioBlob = generateAudioBlobForSentence(
+          lastSentence,
+          audioBlobs
+        );
+        const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
+        const matches = await runGetNearestMatchingSpeakers({
+          storageId: storageId as Id<"_storage">,
+        });
+        // console.log("Matches:", matches);
+        // Update the predictedNames for the specific speaker
+        setSpeakerDetails((currentSpeakerDetails) =>
+          currentSpeakerDetails.map((speakerDetail) => {
+            if (speakerDetail.speakerNumber === lastSentence.speaker) {
+              // Assuming currentSpeaker is the speaker number you're updating
+              return {
+                ...speakerDetail,
+                predictedNames: matches?.map((match) => ({
+                  name: match._id.toString(), // Assuming the match object has a name property
+                  score: match._score, // Assuming the match object has a score property
+                })),
+              };
+            }
+            return speakerDetail;
+          })
+        );
+        if (sentenceID) {
+          //consider doing something with the sentenceID
+        } else {
+          console.error("Failed to store sentence, sentenceID is void.");
         }
-
-        lastSpeakerRef.current = currentSpeaker;
       }
     };
 
-    storeData();
-  }, [
-    finalizedSentences,
-    storeFinalizedSentence,
-    meetingID,
-    setFinalizedSentences,
-    microphone,
-    audioBlobs,
-    uploadAudioToConvexFiles,
-    runGetNearestMatchingSpeakers,
-  ]);
+    handleFinalizedSentencesChange();
+  }, [finalizedSentences.length]);
 
   //function to request predicted speakername based on speakernumber first time speaking
   //doesnt do anything but works weel, need to investigate how existing workflow works and if better than this one or not

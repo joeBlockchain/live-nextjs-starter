@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Separator } from "@/components/ui/separator";
 
 //import icon stuff
 import { User, X } from "lucide-react";
@@ -68,6 +70,19 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
     return speaker
       ? `${speaker.firstName} ${speaker.lastName}`.trim()
       : `Speaker ${speakerNumber}`;
+  };
+
+  // Function to determine badge color based on score
+  const getBadgeColor = (score: number | undefined) => {
+    // Provide a default score (e.g., 0) if score is undefined
+    const finalScore = score ?? 0;
+    if (finalScore > 0.75) {
+      return "bg-emerald-500 dark:bg-emerald-600 dark:text-emerald-200 hover:bg-emerald-600 dark:hover:bg-emerald-700";
+    } else if (finalScore > 0.5) {
+      return "bg-amber-500 dark:bg-amber-600 dark:text-amber-200 hover:bg-amber-600 dark:hover:bg-amber-700";
+    } else {
+      return "bg-red-500 dark:bg-red-600 dark:text-red-200 hover:bg-red-600 dark:hover:bg-red-700";
+    }
   };
 
   return (
@@ -127,6 +142,51 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                     </div>
                   </div>
                 </div>
+                <Separator className="my-5" />
+                <h4 className="font-medium leading-none mb-2">
+                  Predicted Names:
+                </h4>
+                {speaker.predictedNames &&
+                  speaker.predictedNames.length == 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      No predictions found... yet!
+                    </p>
+                  )}
+                {speaker.predictedNames &&
+                  speaker.predictedNames.length > 0 && (
+                    <RadioGroup
+                      className=" space-y-4 mt-5"
+                      defaultValue={speaker.predictedNames[0].name}
+                      // onChange={(newValue) =>
+                      //   handlePredictedNameChange(
+                      //     speaker.speakerNumber,
+                      //     newValue
+                      //   )
+                      // }
+                    >
+                      {speaker.predictedNames.map((predictedName, idx) => (
+                        <div key={idx} className="flex items-center space-x-4">
+                          <RadioGroupItem
+                            value={predictedName.name}
+                            id={`speaker-${speaker.speakerNumber}-name-${idx}`}
+                          />
+                          <Label
+                            className="flex flex-row items-center space-x-2 cursor-pointer"
+                            htmlFor={`speaker-${speaker.speakerNumber}-name-${idx}`}
+                          >
+                            <Badge
+                              className={`mr-1 ${getBadgeColor(
+                                predictedName.score
+                              )}`}
+                            >
+                              {(predictedName.score * 100).toFixed(0)}
+                            </Badge>
+                            <span>{predictedName.name.slice(0, 10)}...</span>
+                          </Label>
+                        </div>
+                      ))}
+                    </RadioGroup>
+                  )}
               </PopoverContent>
             </Popover>
           </div>
