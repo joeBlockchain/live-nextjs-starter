@@ -217,7 +217,7 @@ export default function NoteContainer({
   const handleCopy = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
-      console.log("Code copied to clipboard");
+      // console.log("Code copied to clipboard");
       setHasCopied(true);
       setTimeout(() => {
         setHasCopied(false);
@@ -234,7 +234,7 @@ export default function NoteContainer({
       .join("\n\n");
     try {
       await navigator.clipboard.writeText(summaryText);
-      console.log("Summary copied to clipboard");
+      // console.log("Summary copied to clipboard");
       // Optionally, update state or show a notification to the user indicating success
     } catch (err) {
       console.error("Failed to copy summary: ", err);

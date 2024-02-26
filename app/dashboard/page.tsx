@@ -71,7 +71,7 @@ const DashboardPage: NextPage = () => {
   const handleClick = async () => {
     try {
       const response = await addUserIdToEmbeddings();
-      console.log(response); // log updated embeddings for debugging
+      //   console.log(response); // log updated embeddings for debugging
     } catch (e) {
       console.error(e);
     }
@@ -85,7 +85,7 @@ const DashboardPage: NextPage = () => {
         return;
       }
       const data = await response.json();
-      console.log(data);
+      //   console.log(data);
       setUsers(data); // Assuming the API returns an array of users
     };
 

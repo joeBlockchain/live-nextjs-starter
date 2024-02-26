@@ -79,6 +79,7 @@ export interface SpeakerDetail {
   firstName: string;
   lastName: string;
   meetingID: Id<"meetings">;
+  predictedNames?: { name: string; score: number }[]; // Add this line
 }
 
 // Step 1: Define a QuestionDetail Interface
@@ -133,10 +134,12 @@ export default function Microphone({
   const [microphone, setMicrophone] = useState<MediaRecorder | null>();
   const [userMedia, setUserMedia] = useState<MediaStream | null>();
   const [audioBlobs, setAudioBlobs] = useState<Blob[]>([]);
-  const combinedAudioBlob = new Blob(audioBlobs, { type: "audio/webm" });
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   // const [finalCaptions, setFinalCaptions] = useState<WordDetail[]>([]);
-  const lastSpeakerRef = useRef<number | null>(null); //used for detecting speaker changes in finalized sentences so we write to the db when the speaker finishes
+  //used for detecting speaker changes in finalized sentences so we write to the db when the speaker finishes
+  const lastSpeakerRef = useRef<number | null>(null);
+  const [lastFinalizedSentenceIndexSaved, setLastFinalizedSentenceIndexSaved] =
+    useState<number | null>(null);
 
   const retrieveSummary = useAction(api.meetingSummary.retrieveMeetingSummary);
 
@@ -155,8 +158,13 @@ export default function Microphone({
     api.transcript.processAudioEmbedding
   );
 
-  const uploadAudioBlob = useCallback(
-    async (audioBlob: Blob) => {
+  const runGetNearestMatchingSpeakers = useAction(
+    api.transcript.getNearestMatchingSpeakers
+  );
+
+  // Refactored function to only upload the audio blob and return the storageId
+  const uploadAudioToConvexFiles = useCallback(
+    async (audioBlob: Blob): Promise<string> => {
       try {
         // Step 1: Get a short-lived upload URL
         const uploadUrl = await generateUploadUrl();
@@ -173,17 +181,34 @@ export default function Microphone({
         const { storageId } = await response.json();
 
         // Step 3: Save the newly allocated storage id to the database
-        // await sendAudio({ storageId, meetingID });
+        await sendAudio({ storageId, meetingID });
 
-        // Call the generateEmebedding action with the storageId
-        // runProcessAudioEmbedding({ storageId }).then(() => {
-        //   // Handle the response as needed
-        // });
+        return storageId as Id<"_storage">;
+      } catch (error) {
+        console.error("Error uploading audio blob:", error);
+        throw error; // Rethrow the error to handle it in the calling function
+      }
+    },
+    [generateUploadUrl, sendAudio, meetingID]
+  );
+
+  const uploadAudioBlob = useCallback(
+    async (audioBlob: Blob, speakerNumber: number) => {
+      try {
+        const storageId = await uploadAudioToConvexFiles(audioBlob);
+
+        // Call the generateEmebedding action
+        //@ts-ignore
+        runProcessAudioEmbedding({ storageId, meetingID, speakerNumber }).then(
+          () => {
+            // Handle the response as needed
+          }
+        );
       } catch (error) {
         console.error("Error uploading audio blob:", error);
       }
     },
-    [generateUploadUrl]
+    [generateUploadUrl, sendAudio, meetingID, runProcessAudioEmbedding]
   );
 
   //disable re-recording until i fix the bug
@@ -229,7 +254,7 @@ export default function Microphone({
 
   // Function to handle new speakers
   const handleNewSpeaker = useCallback(
-    (speakerNumber: number) => {
+    async (speakerNumber: number) => {
       // Check if the speaker already exists
       if (
         !speakerDetails.some((detail) => detail.speakerNumber === speakerNumber)
@@ -240,7 +265,9 @@ export default function Microphone({
           firstName: "Speaker " + speakerNumber,
           lastName: "",
           meetingID,
+          predictedNames: [], // Add this line
         };
+
         // console.log("New Speaker:", newSpeaker);
         setSpeakerDetails((prevDetails) => [...prevDetails, newSpeaker]);
       }
@@ -382,12 +409,12 @@ export default function Microphone({
       //retrieve the summary
       handleGenerateSummary();
 
-      // console.log("finalCaptions:", finalCaptions); // Log the finalized
+      //console.log("finalCaptions:", finalCaptions); // Log the finalized
 
       microphone.stop();
 
       //save final words
-      console.log("Finalized Sentences:", finalizedSentences); // Log the finalized sentences when stopping the recording
+      // console.log("Finalized Sentences:", finalizedSentences); // Log the finalized sentences when stopping the recording
       finalCaptions.forEach(async (caption) => {
         try {
           const result = await storeWordDetail({
@@ -431,7 +458,17 @@ export default function Microphone({
           //   transcript: lastSentence.transcript,
           //   meetingID: meetingID,
           // });
-          console.log("Stored sentence embedding:", sentenceEmbeddings);
+          // console.log("Stored sentence embedding:", sentenceEmbeddings);
+
+          //generate and save audio embeddings
+          // Iterate over all finalized sentences to upload their corresponding audio blobs
+          for (const sentence of finalizedSentences) {
+            const sectionAudioBlob = generateAudioBlobForSentence(
+              sentence,
+              audioBlobs
+            );
+            uploadAudioBlob(sectionAudioBlob, sentence.speaker);
+          }
         } else {
           console.error("Failed to store sentence, sentenceID is void.");
         }
@@ -442,15 +479,17 @@ export default function Microphone({
         speakerDetails.map((speaker) => addSpeakerToDB(speaker))
       );
 
+      //This was for saving the whole audio but now we are using audio clips to embed audio segments with the uploadAudioBlob function
+      //revisit this if need to save full audio file
       // Combine audio blobs into a single Blob
-      const combinedAudioBlob = new Blob(audioBlobs, { type: "audio/webm" });
-      // Code to create a downloadable link for the combined audio
-      const audioURL = URL.createObjectURL(combinedAudioBlob);
-      setDownloadUrl(audioURL); // Set the URL for the download button to use
+      // const combinedAudioBlob = new Blob(audioBlobs, { type: "audio/webm" });
+      // // Code to create a downloadable link for the combined audio
+      // const audioURL = URL.createObjectURL(combinedAudioBlob);
+      // setDownloadUrl(audioURL); // Set the URL for the download button to use
 
-      uploadAudioBlob(combinedAudioBlob);
+      // uploadAudioBlob(combinedAudioBlob);
 
-      //handle next steps to initiate audio embedding
+      // handle next steps to initiate audio embedding
       // console.log("calling /api/embedding with audio blob:", combinedAudioBlob);
       // const formData = new FormData();
       // formData.append("audio_file", combinedAudioBlob, "audio.webm");
@@ -527,11 +566,27 @@ export default function Microphone({
     storeWordDetail,
     finalCaptions,
     setAudioBlobs,
-    setDownloadUrl,
     uploadAudioBlob,
     handleGenerateSummary,
     createAndSaveEmbedding,
   ]);
+
+  function generateAudioBlobForSentence(
+    sentence: FinalizedSentence,
+    audioBlobs: Blob[]
+  ): Blob {
+    const startIndex = Math.ceil(sentence.start / 0.5);
+    const endIndex = Math.floor(sentence.end / 0.5);
+
+    // Include the first blob for header information
+    const headerBlob = audioBlobs[0];
+    // Slice the section from startIndex to endIndex
+    const sectionBlobs: Blob[] = audioBlobs.slice(startIndex, endIndex + 1);
+    // Combine the header blob with the section blobs
+    const combinedBlobs = [headerBlob, ...sectionBlobs];
+
+    return new Blob(combinedBlobs, { type: "audio/webm" });
+  }
 
   // Clear the interval when the component unmounts to prevent memory leaks
   useEffect(() => {
@@ -770,7 +825,6 @@ export default function Microphone({
           endTime = wordDetail.end;
         }
       }
-
       // console.log("Finalized Sentences:", sentences);
       // console.log("Detected Questions:", detectedQuestions); // Log detected questions
       setFinalizedSentences(sentences);
@@ -779,47 +833,91 @@ export default function Microphone({
     [meetingID, handleNewSpeaker, setFinalizedSentences]
   );
 
-  //detect when speakerchanges in finalized sentence
+  //detect when speakerchanges in finalized sentences and save the last sentence to the db
   useEffect(() => {
-    const storeData = async () => {
-      if (finalizedSentences.length > 1) {
-        // Ensure there's at least one sentence to store
-        const lastSentenceIndex = finalizedSentences.length - 2;
+    const handleFinalizedSentencesChange = async () => {
+      let currentLength = finalizedSentences.length;
+      // Your logic here to handle changes in finalizedSentences
+      if (currentLength > 1) {
+        // if greater than 2 then we have our first complete sentence from our first speaker
+        const lastSentence = finalizedSentences[currentLength - 2];
 
-        const lastSentence = finalizedSentences[lastSentenceIndex];
-        const currentSentence =
-          finalizedSentences[finalizedSentences.length - 1];
-        const currentSpeaker = currentSentence.speaker;
+        console.log("saving Last sentence:", lastSentence);
 
-        if (
-          lastSpeakerRef.current !== null &&
-          lastSpeakerRef.current !== currentSpeaker
-        ) {
-          const sentenceID = await storeFinalizedSentence({
-            meetingID: meetingID,
-            speaker: lastSentence.speaker,
-            transcript: lastSentence.transcript,
-            start: lastSentence.start,
-            end: lastSentence.end,
-          });
-          if (sentenceID) {
-            //consider doing something with the sentenceID
-          } else {
-            console.error("Failed to store sentence, sentenceID is void.");
-          }
+        const sentenceID = await storeFinalizedSentence({
+          meetingID: meetingID,
+          speaker: lastSentence.speaker,
+          transcript: lastSentence.transcript,
+          start: lastSentence.start,
+          end: lastSentence.end,
+        });
+        const sectionAudioBlob = generateAudioBlobForSentence(
+          lastSentence,
+          audioBlobs
+        );
+        const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
+        const matches = await runGetNearestMatchingSpeakers({
+          storageId: storageId as Id<"_storage">,
+        });
+        // console.log("Matches:", matches);
+        // Update the predictedNames for the specific speaker
+        setSpeakerDetails((currentSpeakerDetails) =>
+          currentSpeakerDetails.map((speakerDetail) => {
+            if (speakerDetail.speakerNumber === lastSentence.speaker) {
+              // Assuming currentSpeaker is the speaker number you're updating
+              return {
+                ...speakerDetail,
+                predictedNames: matches?.map((match) => ({
+                  name: match._id.toString(), // Assuming the match object has a name property
+                  score: match._score, // Assuming the match object has a score property
+                })),
+              };
+            }
+            return speakerDetail;
+          })
+        );
+        if (sentenceID) {
+          //consider doing something with the sentenceID
+        } else {
+          console.error("Failed to store sentence, sentenceID is void.");
         }
-
-        lastSpeakerRef.current = currentSpeaker;
       }
     };
 
-    storeData();
-  }, [
-    finalizedSentences,
-    storeFinalizedSentence,
-    meetingID,
-    setFinalizedSentences,
-  ]);
+    handleFinalizedSentencesChange();
+  }, [finalizedSentences.length]);
+
+  //function to request predicted speakername based on speakernumber first time speaking
+  //doesnt do anything but works weel, need to investigate how existing workflow works and if better than this one or not
+  //then delete this one or the other
+
+  useEffect(() => {
+    // Extract speaker numbers from finalizedSentences
+    const speakerNumbers = new Set(
+      finalizedSentences.map((sentence) => sentence.speaker)
+    );
+
+    // Check if there's a new speaker number by comparing with the previous state
+    const newSpeakers = Array.from(speakerNumbers).filter(
+      (speakerNumber) => !prevSpeakerNumbers.current.has(speakerNumber)
+    );
+
+    if (newSpeakers.length > 0) {
+      // Handle new speakers (e.g., log to console or update state)
+      // console.log("New speaker(s) arrived:", newSpeakers);
+      // Optionally, perform actions like updating state or calling a function
+      // For example, you could call a function to handle new speakers:
+      // newSpeakers.forEach(speakerNumber => handleNewSpeakerArrival(speakerNumber));
+
+      // Update the ref with the current set of speaker numbers
+      prevSpeakerNumbers.current = speakerNumbers;
+    }
+  }, [finalizedSentences]); // Depend on finalizedSentences to re-run this effect when it changes
+
+  // Use a ref to keep track of the previous set of speaker numbers without triggering re-renders
+  const prevSpeakerNumbers = useRef(
+    new Set(finalizedSentences.map((sentence) => sentence.speaker))
+  );
 
   const [questions, setQuestions] = useState<QuestionDetail[]>([]);
   // Inside your component

@@ -163,7 +163,7 @@ export default function ChatCompletion({
   const handleCopy = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
-      console.log("Code copied to clipboard");
+      // console.log("Code copied to clipboard");
       setHasCopied(true);
       setTimeout(() => {
         setHasCopied(false);

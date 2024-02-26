@@ -31,6 +31,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 //import icons
 import { CalendarCheck2, ArrowRight, LayoutDashboard } from "lucide-react";
 
+//custom image stuff
+import lightMockup from "@/public/light-1.png";
+import darkMockup from "@/public/dark-1.png";
+
 export default function Home() {
   const { user } = useUser();
   const isPowerUser = user?.publicMetadata?.isPowerUser === "true";
@@ -102,20 +106,20 @@ export default function Home() {
         </div>
         <div className="my-40 p-2 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-border w-7xl mx-auto">
           <Image
-            src="/light-1.png"
+            src={lightMockup}
             alt="Screenshot of SaaS Application"
-            width={2546}
-            height={1796}
-            layout="responsive"
+            // width={2546}
+            // height={1796}
             className="rounded-xl border border-border shadow-2xl dark:hidden"
+            style={{ aspectRatio: "2546 / 1796" }} // Adjust the aspect ratio as needed
           />
           <Image
-            src="/dark-1.png"
+            src={darkMockup}
             alt="Screenshot of SaaS Application"
-            width={2536}
-            height={1794}
-            layout="responsive"
+            // width={2536}
+            // height={1794}
             className="rounded-xl border border-border shadow-2xl hidden dark:block"
+            style={{ aspectRatio: "2536 / 1794" }} // Adjust the aspect ratio as needed
           />
           {/* Additional content */}
         </div>

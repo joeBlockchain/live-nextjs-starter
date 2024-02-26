@@ -362,6 +362,7 @@ export const sendAudio = mutation({
     const url = await db.insert("audioFiles", {
       storageId: args.storageId,
       meetingID: args.meetingID,
+      userId: user.subject,
     });
   },
 });
@@ -373,18 +374,38 @@ export const generateAudioFileUrl = query({
   },
 });
 
-export const processAudioEmbedding = action({
+export const getNearestMatchingSpeakers = action({
   args: {
     storageId: v.id("_storage"), // The ID of the uploaded file in Convex storage
   },
-  handler: async ({ storage, auth }, { storageId }) => {
-    const user = await auth.getUserIdentity();
-    if (!user) {
-      throw new Error("User not authenticated");
-    }
+  handler: async (ctx, args) => {
     try {
-      const audioUrl = (await storage.getUrl(storageId)) as string;
+      const user = await ctx.auth.getUserIdentity();
+
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      const currentUserID = user.subject;
+
+      //retrieve the audio file from the storage
+      const audioUrl = (await ctx.storage.getUrl(args.storageId)) as string;
+      // post to runpod to get embedding
       const runpodResponse = await postAudioToRunpod(audioUrl);
+      // store the embedding in the convex database
+
+      // Perform a vector search with the generated embedding
+      const results = await ctx.vectorSearch(
+        "audioEmbeddings",
+        "embeddingVector",
+        {
+          vector: runpodResponse.output.embedding,
+          limit: 5,
+          filter: (q) => q.eq("userId", currentUserID),
+        }
+      );
+
+      return results;
 
       // console.log("Runpod response data:", runpodResponse);
     } catch (error) {
@@ -392,6 +413,77 @@ export const processAudioEmbedding = action({
     }
   },
 });
+
+export const processAudioEmbedding = action({
+  args: {
+    storageId: v.id("_storage"), // The ID of the uploaded file in Convex storage
+    meetingID: v.id("meetings"),
+    speakerNumber: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+    try {
+      //retrieve the audio file from the storage
+      const audioUrl = (await ctx.storage.getUrl(args.storageId)) as string;
+      // post to runpod to get embedding
+      const runpodResponse = await postAudioToRunpod(audioUrl);
+      // store the embedding in the convex database
+      const embeddingId = await ctx.runMutation(
+        internal.transcript.addAudioEmbedding,
+        {
+          meetingID: args.meetingID,
+          speakerNumber: args.speakerNumber,
+          delayTime: runpodResponse.delayTime,
+          executionTime: runpodResponse.executionTime,
+          runPodId: runpodResponse.id,
+          storageId: args.storageId,
+          audioEmbedding: runpodResponse.output.embedding,
+          userId: user.subject,
+        }
+      );
+
+      // console.log("Runpod response data:", runpodResponse);
+    } catch (error) {
+      console.error("Failed to fetch transcript:", error);
+    }
+  },
+});
+
+export const addAudioEmbedding = internalMutation({
+  args: {
+    meetingID: v.id("meetings"),
+    speakerNumber: v.number(),
+    delayTime: v.float64(),
+    executionTime: v.float64(),
+    runPodId: v.string(),
+    storageId: v.id("_storage"),
+    audioEmbedding: v.array(v.float64()),
+    userId: v.optional(v.string()),
+  },
+  handler: async ({ db }, args) => {
+    const embeddingId = await db.insert("audioEmbeddings", {
+      meetingID: args.meetingID,
+      speakerNumber: args.speakerNumber,
+      storageId: args.storageId,
+      audioEmbedding: args.audioEmbedding,
+      delayTime: args.delayTime,
+      executionTime: args.executionTime,
+      runPodId: args.runPodId,
+      userId: args.userId,
+    });
+    return embeddingId;
+  },
+});
+
+async function uploadAudioSegment(blob: Blob, ctx: any): Promise<string> {
+  // Use Convex's storage API to store the blob
+  const storageId = await ctx.storage.store(blob);
+  // Return the URL of the stored blob
+  return await ctx.storage.getUrl(storageId);
+}
 
 async function postAudioToRunpod(audioUrl: string): Promise<any> {
   const requestBody = {
