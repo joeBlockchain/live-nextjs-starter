@@ -33,12 +33,14 @@ export default defineSchema({
   })
     .index("by_meetingID", ["meetingID"])
     .index("by_userId_meetingID", ["userId", "meetingID"]),
-
   speakers: defineTable({
     meetingID: v.id("meetings"),
     speakerNumber: v.number(),
     firstName: v.string(),
     lastName: v.string(),
+    predictedNames: v.optional(
+      v.array(v.object({ name: v.string(), score: v.float64() }))
+    ),
   }).index("by_meetingID", ["meetingID"]),
   meetingSummaries: defineTable({
     aiModel: v.string(),
@@ -56,7 +58,6 @@ export default defineSchema({
     speaker: v.number(),
     meetingID: v.id("meetings"),
   }).index("by_meetingID", ["meetingID"]),
-
   wordDetails: defineTable({
     meetingID: v.id("meetings"),
     word: v.string(),
@@ -65,11 +66,12 @@ export default defineSchema({
     confidence: v.float64(),
     speaker: v.number(),
     punctuated_word: v.string(),
-    audio_embedding: v.optional(v.array(v.float64())), // Assuming the embedding is an array of floats
+    audio_embedding: v.optional(v.array(v.float64())),
   }).index("by_meetingID", ["meetingID"]),
   audioFiles: defineTable({
-    storageId: v.id("_storage"), // Reference to the file in Convex storage
-    meetingID: v.id("meetings"), // Link to the meeting this audio file is associated with
+    storageId: v.id("_storage"),
+    meetingID: v.id("meetings"),
+    userId: v.string(),
   }).index("by_meetingID", ["meetingID"]),
   sentenceEmbeddings: defineTable({
     meetingID: v.id("meetings"),
@@ -78,10 +80,25 @@ export default defineSchema({
     embedding: v.array(v.float64()),
   }).vectorIndex("embeddingVector", {
     vectorField: "embedding",
-    dimensions: 1024, // Adjust based on your actual embedding size
+    dimensions: 1024,
     filterFields: ["finalizedSentenceId", "meetingID", "userId"],
   }),
   userSettings: defineTable({
     language: v.string(),
+  }),
+  audioEmbeddings: defineTable({
+    meetingID: v.id("meetings"),
+    speakerNumber: v.number(),
+    // finalizedSentenceId: v.id("finalizedSentences"),
+    userId: v.optional(v.string()),
+    audioEmbedding: v.array(v.float64()),
+    storageId: v.id("_storage"),
+    delayTime: v.float64(),
+    executionTime: v.float64(),
+    runPodId: v.string(),
+  }).vectorIndex("embeddingVector", {
+    vectorField: "audioEmbedding",
+    dimensions: 512,
+    filterFields: ["meetingID", "userId"], // finalizedSentenceId
   }),
 });

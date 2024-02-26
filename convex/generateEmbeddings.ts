@@ -84,7 +84,7 @@ export const createEmbeddingsforFinalizedSentencesInMeetingID = action({
         meetingID: sentence.meetingID,
       });
     }
-    console.log(`Generated embeddings for ${sentences.length} sentences`);
+    // console.log(`Generated embeddings for ${sentences.length} sentences`);
 
     return sentences.length;
   },

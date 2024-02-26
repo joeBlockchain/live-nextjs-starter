@@ -147,7 +147,7 @@ export const getSentenceEmbeddingsWithoutUserId = internalQuery({
 export const getUserIdFromFinalizedSentence = query({
   args: { sentenceEmbeddingId: v.string() },
   handler: async (ctx, args) => {
-    console.log("args.sentenceEmbeddingId", args.sentenceEmbeddingId);
+    // console.log("args.sentenceEmbeddingId", args.sentenceEmbeddingId);
 
     const user = await ctx.auth.getUserIdentity();
     if (!user) {

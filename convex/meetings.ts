@@ -85,12 +85,15 @@ export const addSpeaker = mutation({
     speakerNumber: v.number(),
     firstName: v.string(),
     lastName: v.string(),
+    predictedNames: v.optional(
+      v.array(v.object({ name: v.string(), score: v.float64() }))
+    ),
   },
   handler: async (ctx, args) => {
     const user = await ctx.auth.getUserIdentity();
 
     if (!user) {
-      throw new Error("Please login to create a meeting");
+      throw new Error("Please login to create a speaker");
     }
 
     await ctx.db.insert("speakers", {
@@ -98,6 +101,7 @@ export const addSpeaker = mutation({
       speakerNumber: args.speakerNumber,
       firstName: args.firstName,
       lastName: args.lastName,
+      predictedNames: args.predictedNames,
     });
   },
 });
@@ -263,15 +267,26 @@ export const deleteMeetingAndRelatedRecords = mutation({
       .filter((q) => q.eq(q.field("meetingID"), meetingId))
       .collect();
     for (const record of audioFiles) {
+      await ctx.storage.delete(record.storageId);
       await ctx.db.delete(record._id);
     }
 
-    // Delete related audioFiles
+    // Delete related sentenceEmbeddings
     const sentenceEmbeddings = await ctx.db
       .query("sentenceEmbeddings")
       .filter((q) => q.eq(q.field("meetingID"), meetingId))
       .collect();
     for (const record of sentenceEmbeddings) {
+      await ctx.db.delete(record._id);
+    }
+
+    //delete related audioembeddings
+    const audioEmbeddings = await ctx.db
+      .query("audioEmbeddings")
+      .filter((q) => q.eq(q.field("meetingID"), meetingId))
+      .collect();
+
+    for (const record of audioEmbeddings) {
       await ctx.db.delete(record._id);
     }
 
