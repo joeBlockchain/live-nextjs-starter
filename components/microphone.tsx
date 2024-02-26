@@ -842,8 +842,6 @@ export default function Microphone({
         // if greater than 2 then we have our first complete sentence from our first speaker
         const lastSentence = finalizedSentences[currentLength - 2];
 
-        console.log("saving Last sentence:", lastSentence);
-
         const sentenceID = await storeFinalizedSentence({
           meetingID: meetingID,
           speaker: lastSentence.speaker,
