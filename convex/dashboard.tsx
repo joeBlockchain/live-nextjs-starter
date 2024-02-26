@@ -26,7 +26,7 @@ export const totalMessages = query({
 
 export const totalSpeakers = query({
   handler: async (ctx) => {
-    const speakers = await ctx.db.query("meetingSpeakers").collect();
+    const speakers = await ctx.db.query("speakers").collect();
     return speakers.length;
   },
 });

@@ -96,7 +96,7 @@ export const addSpeaker = mutation({
       throw new Error("Please login to create a speaker");
     }
 
-    await ctx.db.insert("meetingSpeakers", {
+    await ctx.db.insert("speakers", {
       meetingID: args.meetingID,
       speakerNumber: args.speakerNumber,
       firstName: args.firstName,
@@ -129,7 +129,7 @@ export const getSpeakersByMeeting = query({
   args: { meetingID: v.id("meetings") },
   async handler({ db }, { meetingID }) {
     return await db
-      .query("meetingSpeakers")
+      .query("speakers")
       .filter((q) => q.eq(q.field("meetingID"), meetingID))
       .collect();
   },
@@ -150,7 +150,7 @@ export const fetchMultipleSpeakersByMeetingIds = query({
     // Iterate over each meetingId and fetch the corresponding speakers
     for (const meetingId of meetingIds) {
       const meetingSpeakers = await ctx.db
-        .query("meetingSpeakers")
+        .query("speakers")
         .filter((q) => q.eq(q.field("meetingID"), meetingId))
         .collect();
 
@@ -227,7 +227,7 @@ export const deleteMeetingAndRelatedRecords = mutation({
 
     // Correctly delete related records from speakers
     const speakers = await ctx.db
-      .query("meetingSpeakers")
+      .query("speakers")
       .filter((q) => q.eq(q.field("meetingID"), meetingId))
       .collect();
     for (const record of speakers) {
