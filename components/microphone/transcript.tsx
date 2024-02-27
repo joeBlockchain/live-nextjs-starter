@@ -219,8 +219,11 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                 </div>
                 <Separator className="my-5" />
                 <h4 className="font-medium leading-none mb-2">
-                  Predicted Names:
+                  Predicted Names
                 </h4>
+                <p className="text-sm text-muted-foreground">
+                  AI predicted based on your previous meetings:
+                </p>
                 {speaker.predictedNames &&
                   speaker.predictedNames.length == 0 && (
                     <p className="text-sm text-muted-foreground">

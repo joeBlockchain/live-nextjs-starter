@@ -611,12 +611,18 @@ export default function Microphone({
     createAndSaveEmbedding,
   ]);
 
+  //currently limititing to 5 second blob to reduce strain on gpu
+  //need to implement sending rest of audio over 5 seconds
   function generateAudioBlobForSentence(
     sentence: FinalizedSentence,
     audioBlobs: Blob[]
   ): Blob {
     const startIndex = Math.ceil(sentence.start / 0.5);
-    const endIndex = Math.floor(sentence.end / 0.5);
+    let endIndex = Math.floor(sentence.end / 0.5);
+
+    // Ensure that the maximum number of blobs from startIndex is limited to 10
+    const maxBlobs = 10;
+    endIndex = Math.min(startIndex + maxBlobs - 1, endIndex);
 
     // Include the first blob for header information
     const headerBlob = audioBlobs[0];
@@ -909,20 +915,28 @@ export default function Microphone({
                 score: match.score, // Assuming the match object has a score property
               }));
 
-              // Check if firstName and lastName are blank
-              if (!speakerDetail.firstName && !speakerDetail.lastName) {
-                // If so, populate firstName with the name from the first result in predictedNames
-                // Ensure there's at least one predicted name to avoid errors
-                const firstNameFromPredicted =
-                  updatedPredictedNames?.[0]?.name || "";
+              // Find the highest scoring match
+              const highestScoringMatch = updatedPredictedNames?.reduce(
+                (prev, current) => (prev.score > current.score ? prev : current)
+              );
+
+              // Check if firstName and lastName are blank and the highest score is greater than 0.80
+              if (
+                !speakerDetail.firstName &&
+                !speakerDetail.lastName &&
+                highestScoringMatch?.score! > 0.8
+              ) {
+                // If so, populate firstName with the name from the highest scoring match
+                const firstNameFromHighestScore =
+                  highestScoringMatch?.name || "";
 
                 return {
                   ...speakerDetail,
-                  firstName: firstNameFromPredicted,
+                  firstName: firstNameFromHighestScore,
                   predictedNames: updatedPredictedNames,
                 };
               } else {
-                // If firstName or lastName is not blank, just update predictedNames
+                // If firstName or lastName is not blank, or no match scores above 0.80, just update predictedNames
                 return {
                   ...speakerDetail,
                   predictedNames: updatedPredictedNames,
