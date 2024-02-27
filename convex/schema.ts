@@ -39,7 +39,14 @@ export default defineSchema({
     firstName: v.string(),
     lastName: v.string(),
     predictedNames: v.optional(
-      v.array(v.object({ name: v.string(), score: v.float64() }))
+      v.array(
+        v.object({
+          name: v.string(),
+          score: v.float64(),
+          speakerId: v.optional(v.string()),
+          embeddingId: v.optional(v.string()),
+        })
+      )
     ),
   }).index("by_meetingID", ["meetingID"]),
   meetingSummaries: defineTable({
@@ -88,7 +95,8 @@ export default defineSchema({
   }),
   audioEmbeddings: defineTable({
     meetingID: v.id("meetings"),
-    speakerNumber: v.number(),
+    speakerNumber: v.optional(v.number()),
+    speakerId: v.optional(v.id("speakers")),
     // finalizedSentenceId: v.id("finalizedSentences"),
     userId: v.optional(v.string()),
     audioEmbedding: v.array(v.float64()),
@@ -99,6 +107,6 @@ export default defineSchema({
   }).vectorIndex("embeddingVector", {
     vectorField: "audioEmbedding",
     dimensions: 512,
-    filterFields: ["meetingID", "userId"], // finalizedSentenceId
+    filterFields: ["meetingID", "userId", "speakerId"], // finalizedSentenceId
   }),
 });

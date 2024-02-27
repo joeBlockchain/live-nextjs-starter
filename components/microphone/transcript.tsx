@@ -67,9 +67,82 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
     const speaker = speakerDetails.find(
       (s) => s.speakerNumber === speakerNumber
     );
-    return speaker
+    return speaker && (speaker.firstName || speaker.lastName)
       ? `${speaker.firstName} ${speaker.lastName}`.trim()
       : `Speaker ${speakerNumber}`;
+  };
+
+  const handlePredictedNameSelection = (
+    speakerNumber: number,
+    predictedNames:
+      | {
+          name: string;
+          speakerId: string;
+          embeddingId: string;
+          score?: number;
+        }[]
+      | undefined,
+    selectedName: string
+  ) => {
+    if (!predictedNames) {
+      console.log("Predicted names are undefined.");
+      return; // Guard clause to handle undefined predictedNames
+    }
+
+    // Filter records with the selected name
+    const recordsWithName = predictedNames.filter(
+      (predictedName) => predictedName.name === selectedName
+    );
+
+    if (recordsWithName.length === 0) {
+      console.log("No matching predicted name found for the selected name.");
+      return;
+    }
+
+    // Find the record with the maximum score among those with the selected name
+    const selectedPredictedName = recordsWithName.reduce(
+      (maxRecord, currentRecord) =>
+        (maxRecord.score || 0) > (currentRecord.score || 0)
+          ? maxRecord
+          : currentRecord
+    );
+
+    // Update the speaker details with the selected predicted name
+    setSpeakerDetails((prevSpeakers) => {
+      const updatedSpeakers = prevSpeakers.map((speaker) => {
+        if (speaker.speakerNumber === speakerNumber) {
+          return { ...speaker, firstName: selectedPredictedName.name };
+        }
+        return speaker;
+      });
+      return updatedSpeakers;
+    });
+  };
+
+  const groupPredictedNamesAndMaxScores = (
+    predictedNames: {
+      name: string;
+      speakerId: string;
+      embeddingId: string;
+      score?: number;
+    }[]
+  ) => {
+    const grouped = predictedNames.reduce(
+      (acc, { name, score = 0 }) => {
+        if (!acc[name]) {
+          acc[name] = { maxScore: score };
+        } else {
+          acc[name].maxScore = Math.max(acc[name].maxScore, score);
+        }
+        return acc;
+      },
+      {} as Record<string, { maxScore: number }>
+    );
+
+    return Object.entries(grouped).map(([name, { maxScore }]) => ({
+      name,
+      maxScore,
+    }));
   };
 
   // Function to determine badge color based on score
@@ -94,7 +167,9 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
             <Popover>
               <PopoverTrigger>
                 <Badge variant="outline" className="h-8">
-                  {speaker.firstName} {speaker.lastName}
+                  {speaker.firstName || speaker.lastName
+                    ? `${speaker.firstName} ${speaker.lastName}`.trim()
+                    : `Speaker ${speaker.speakerNumber}`}
                 </Badge>
               </PopoverTrigger>
               <PopoverContent className="w-80">
@@ -149,39 +224,42 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                 {speaker.predictedNames &&
                   speaker.predictedNames.length == 0 && (
                     <p className="text-sm text-muted-foreground">
-                      No predictions found... yet!
+                      No predictions found... yet
                     </p>
                   )}
                 {speaker.predictedNames &&
                   speaker.predictedNames.length > 0 && (
                     <RadioGroup
-                      className=" space-y-4 mt-5"
-                      defaultValue={speaker.predictedNames[0].name}
-                      // onChange={(newValue) =>
-                      //   handlePredictedNameChange(
-                      //     speaker.speakerNumber,
-                      //     newValue
-                      //   )
-                      // }
+                      className="space-y-4 mt-5"
+                      defaultValue={speaker.predictedNames[0].embeddingId} // Adjust if necessary
+                      onValueChange={(newValue) =>
+                        handlePredictedNameSelection(
+                          speaker.speakerNumber,
+                          speaker.predictedNames, // This might need adjustment
+                          newValue
+                        )
+                      }
                     >
-                      {speaker.predictedNames.map((predictedName, idx) => (
+                      {groupPredictedNamesAndMaxScores(
+                        speaker.predictedNames
+                      ).map((predictedName, idx) => (
                         <div key={idx} className="flex items-center space-x-4">
                           <RadioGroupItem
-                            value={predictedName.name}
-                            id={`speaker-${speaker.speakerNumber}-name-${idx}`}
+                            value={predictedName.name} // Using name as value; ensure it's unique or adjust
+                            id={`speaker-${speaker.speakerNumber}-name-${idx}`} // Adjust ID to use index or another unique identifier
                           />
                           <Label
                             className="flex flex-row items-center space-x-2 cursor-pointer"
-                            htmlFor={`speaker-${speaker.speakerNumber}-name-${idx}`}
+                            htmlFor={`speaker-${speaker.speakerNumber}-name-${idx}`} // Adjust htmlFor to match
                           >
                             <Badge
                               className={`mr-1 ${getBadgeColor(
-                                predictedName.score
+                                predictedName.maxScore
                               )}`}
                             >
-                              {(predictedName.score * 100).toFixed(0)}
+                              {(predictedName.maxScore * 100).toFixed(0)}%
                             </Badge>
-                            <span>{predictedName.name.slice(0, 10)}...</span>
+                            <span>{predictedName.name}</span>
                           </Label>
                         </div>
                       ))}

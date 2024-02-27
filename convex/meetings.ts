@@ -86,7 +86,14 @@ export const addSpeaker = mutation({
     firstName: v.string(),
     lastName: v.string(),
     predictedNames: v.optional(
-      v.array(v.object({ name: v.string(), score: v.float64() }))
+      v.array(
+        v.object({
+          name: v.string(),
+          score: v.float64(),
+          speakerId: v.string(),
+          embeddingId: v.string(),
+        })
+      )
     ),
   },
   handler: async (ctx, args) => {
@@ -96,13 +103,34 @@ export const addSpeaker = mutation({
       throw new Error("Please login to create a speaker");
     }
 
-    await ctx.db.insert("speakers", {
+    const newSpeaker = await ctx.db.insert("speakers", {
       meetingID: args.meetingID,
       speakerNumber: args.speakerNumber,
       firstName: args.firstName,
       lastName: args.lastName,
       predictedNames: args.predictedNames,
     });
+
+    return newSpeaker;
+  },
+});
+
+export const getSpeakerDetailsById = query({
+  args: {
+    speakerId: v.id("speakers"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to retrieve a meeting");
+    }
+
+    return await ctx.db
+      .query("speakers")
+      // .filter((q) => q.eq(q.field("userId"), user.subject))  //put this in when we have the field added to the db
+      .filter((q) => q.eq(q.field("_id"), args.speakerId)) // Add this line to filter by meetingID
+      .collect();
   },
 });
 

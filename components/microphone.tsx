@@ -78,8 +78,15 @@ export interface SpeakerDetail {
   speakerNumber: number;
   firstName: string;
   lastName: string;
+  embeddingId?: Id<"audioEmbeddings">;
   meetingID: Id<"meetings">;
-  predictedNames?: { name: string; score: number }[]; // Add this line
+  speakerID?: Id<"speakers">; // Add this line
+  predictedNames?: {
+    name: string;
+    score: number;
+    speakerId: string;
+    embeddingId: string;
+  }[]; // Add this line
 }
 
 // Step 1: Define a QuestionDetail Interface
@@ -193,17 +200,21 @@ export default function Microphone({
   );
 
   const uploadAudioBlob = useCallback(
-    async (audioBlob: Blob, speakerNumber: number) => {
+    async (audioBlob: Blob, speaker: SpeakerDetail) => {
       try {
-        const storageId = await uploadAudioToConvexFiles(audioBlob);
+        const storageId: Id<"_storage"> = (await uploadAudioToConvexFiles(
+          audioBlob
+        )) as Id<"_storage">;
 
         // Call the generateEmebedding action
-        //@ts-ignore
-        runProcessAudioEmbedding({ storageId, meetingID, speakerNumber }).then(
-          () => {
-            // Handle the response as needed
-          }
-        );
+        runProcessAudioEmbedding({
+          storageId,
+          meetingID,
+          speakerNumber: speaker.speakerNumber,
+          speakerId: speaker.speakerID!,
+        }).then(() => {
+          // Handle the response as needed
+        });
       } catch (error) {
         console.error("Error uploading audio blob:", error);
       }
@@ -262,7 +273,7 @@ export default function Microphone({
         // Add new speaker with default names
         const newSpeaker: SpeakerDetail = {
           speakerNumber,
-          firstName: "Speaker " + speakerNumber,
+          firstName: "",
           lastName: "",
           meetingID,
           predictedNames: [], // Add this line
@@ -346,7 +357,7 @@ export default function Microphone({
     // Check if there are any speakers fetched from the database
     if (speakersFromDB && speakersFromDB.length > 0) {
       // Set the fetched speakers to your component's state
-      setSpeakerDetails(speakersFromDB);
+      setSpeakerDetails(speakersFromDB as SpeakerDetail[]);
     }
   }, [speakersFromDB, setSpeakerDetails]);
 
@@ -415,26 +426,41 @@ export default function Microphone({
 
       //save final words
       // console.log("Finalized Sentences:", finalizedSentences); // Log the finalized sentences when stopping the recording
-      finalCaptions.forEach(async (caption) => {
-        try {
-          const result = await storeWordDetail({
-            meetingID: meetingID,
-            word: caption.word,
-            start: caption.start,
-            end: caption.end,
-            confidence: caption.confidence,
-            speaker: caption.speaker,
-            punctuated_word: caption.punctuated_word,
-            // audio_embedding can be omitted if not available yet
-          });
-          // console.log("Word detail stored:", result);
-        } catch (error) {
-          console.error("Failed to store word detail:", error);
-        }
-      });
+      // finalCaptions.forEach(async (caption) => {
+      //   try {
+      //     const result = await storeWordDetail({
+      //       meetingID: meetingID,
+      //       word: caption.word,
+      //       start: caption.start,
+      //       end: caption.end,
+      //       confidence: caption.confidence,
+      //       speaker: caption.speaker,
+      //       punctuated_word: caption.punctuated_word,
+      //       // audio_embedding can be omitted if not available yet
+      //     });
+      //     // console.log("Word detail stored:", result);
+      //   } catch (error) {
+      //     console.error("Failed to store word detail:", error);
+      //   }
+      // });
 
       stopTimer(); // Stop the timer
       await updateMeeting({ meetingID, updates: { duration: timer } });
+
+      const speakerDetailsWithIds = await Promise.all(
+        speakerDetails.map(async (speaker) => {
+          // Assuming addSpeakerToDB correctly returns the ID of the newly added speaker
+          const speakerID = await addSpeakerToDB({
+            meetingID: speaker.meetingID,
+            speakerNumber: speaker.speakerNumber,
+            firstName: speaker.firstName,
+            lastName: speaker.lastName,
+            predictedNames: speaker.predictedNames,
+          });
+          // Return a new object combining the original speaker details with the new speakerID
+          return { ...speaker, speakerID };
+        })
+      );
 
       // Store last finalized sentence in the database
       if (finalizedSentences.length > 0) {
@@ -467,17 +493,31 @@ export default function Microphone({
               sentence,
               audioBlobs
             );
-            uploadAudioBlob(sectionAudioBlob, sentence.speaker);
+            // Find the matching speaker detail with the speakerID
+            const speakerDetailWithId = speakerDetailsWithIds.find(
+              (speakerDetail) =>
+                speakerDetail.speakerNumber === sentence.speaker
+            );
+
+            // Check if speakerDetailWithId exists and both firstName and lastName are not empty or null
+            // Check if speakerDetailWithId exists and either firstName or lastName is not empty or null
+            if (
+              speakerDetailWithId &&
+              (speakerDetailWithId.firstName || speakerDetailWithId.lastName)
+            ) {
+              // Now speakerDetailWithId includes the speakerID
+              uploadAudioBlob(sectionAudioBlob, speakerDetailWithId);
+            } else {
+              console.error(
+                "Speaker detail with ID not found for speaker number:",
+                sentence.speaker
+              );
+            }
           }
         } else {
           console.error("Failed to store sentence, sentenceID is void.");
         }
       }
-
-      // Push speaker details to the database
-      await Promise.all(
-        speakerDetails.map((speaker) => addSpeakerToDB(speaker))
-      );
 
       //This was for saving the whole audio but now we are using audio clips to embed audio segments with the uploadAudioBlob function
       //revisit this if need to save full audio file
@@ -857,19 +897,37 @@ export default function Microphone({
         const matches = await runGetNearestMatchingSpeakers({
           storageId: storageId as Id<"_storage">,
         });
-        // console.log("Matches:", matches);
         // Update the predictedNames for the specific speaker
         setSpeakerDetails((currentSpeakerDetails) =>
           currentSpeakerDetails.map((speakerDetail) => {
             if (speakerDetail.speakerNumber === lastSentence.speaker) {
               // Assuming currentSpeaker is the speaker number you're updating
-              return {
-                ...speakerDetail,
-                predictedNames: matches?.map((match) => ({
-                  name: match._id.toString(), // Assuming the match object has a name property
-                  score: match._score, // Assuming the match object has a score property
-                })),
-              };
+              const updatedPredictedNames = matches?.map((match) => ({
+                embeddingId: match.embeddingId, // Assuming the match object has an id property
+                speakerId: match.speakerId, // Assuming the match object has an id property
+                name: match.speaker[0].firstName, // Assuming the match object has a name property
+                score: match.score, // Assuming the match object has a score property
+              }));
+
+              // Check if firstName and lastName are blank
+              if (!speakerDetail.firstName && !speakerDetail.lastName) {
+                // If so, populate firstName with the name from the first result in predictedNames
+                // Ensure there's at least one predicted name to avoid errors
+                const firstNameFromPredicted =
+                  updatedPredictedNames?.[0]?.name || "";
+
+                return {
+                  ...speakerDetail,
+                  firstName: firstNameFromPredicted,
+                  predictedNames: updatedPredictedNames,
+                };
+              } else {
+                // If firstName or lastName is not blank, just update predictedNames
+                return {
+                  ...speakerDetail,
+                  predictedNames: updatedPredictedNames,
+                };
+              }
             }
             return speakerDetail;
           })

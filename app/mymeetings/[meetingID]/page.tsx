@@ -78,11 +78,19 @@ export interface WordDetail {
   punctuated_word: string;
 }
 
-interface SpeakerDetail {
+export interface SpeakerDetail {
   speakerNumber: number;
   firstName: string;
   lastName: string;
+  embeddingId?: Id<"audioEmbeddings">;
   meetingID: Id<"meetings">;
+  speakerID?: Id<"speakers">; // Add this line
+  predictedNames?: {
+    name: string;
+    score: number;
+    speakerId: string;
+    embeddingId: string;
+  }[]; // Add this line
 }
 
 export interface QuestionDetail {
