@@ -83,11 +83,19 @@ interface FinalizedSentence {
   meetingID: Id<"meetings">;
 }
 
-interface SpeakerDetail {
+export interface SpeakerDetail {
   speakerNumber: number;
   firstName: string;
   lastName: string;
+  embeddingId?: Id<"audioEmbeddings">;
   meetingID: Id<"meetings">;
+  speakerID?: Id<"speakers">; // Add this line
+  predictedNames?: {
+    name: string;
+    score: number;
+    speakerId: string;
+    embeddingId: string;
+  }[]; // Add this line
 }
 
 type SentenceData = {

@@ -15,6 +15,32 @@ interface EmbeddingDetail {
   finalizedSentenceId: string;
 }
 
+interface Speaker {
+  _creationTime: number;
+  _id: string;
+  firstName: string;
+  lastName: string;
+  meetingID: string;
+  predictedNames?: PredictedName[];
+  speakerNumber: number;
+}
+
+interface PredictedName {
+  name: string;
+  score: number;
+  speakerId?: string;
+  embeddingId?: string;
+}
+
+interface AudioEmbeddingDetail {
+  meetingID: string;
+  score: number;
+  speaker: Speaker[];
+  speakerId: string;
+  speakerNumber: number;
+  embeddingId: string;
+}
+
 export const storeFinalizedSentence = mutation({
   args: {
     meetingID: v.id("meetings"),
@@ -332,16 +358,16 @@ export const storeWordDetail = mutation({
     if (!user) {
       throw new Error("User not authenticated");
     }
-    await db.insert("wordDetails", {
-      meetingID,
-      word,
-      start,
-      end,
-      confidence,
-      speaker,
-      punctuated_word,
-      audio_embedding,
-    });
+    // await db.insert("wordDetails", {
+    //   meetingID,
+    //   word,
+    //   start,
+    //   end,
+    //   confidence,
+    //   speaker,
+    //   punctuated_word,
+    //   audio_embedding,
+    // });
   },
 });
 
@@ -400,17 +426,53 @@ export const getNearestMatchingSpeakers = action({
         "embeddingVector",
         {
           vector: runpodResponse.output.embedding,
-          limit: 5,
+          limit: 20,
           filter: (q) => q.eq("userId", currentUserID),
         }
       );
 
-      return results;
+      // Fetch additional details for each result using the internal query
+      const resultsWithDetails: (AudioEmbeddingDetail & { score: number })[] =
+        await Promise.all(
+          results.map(async (result) => {
+            const details = await ctx.runQuery(
+              internal.transcript.fetchAudioEmbeddingDetails,
+              {
+                embeddingId: result._id,
+              }
+            );
+            // Fetch speaker detail here
+            const speaker = await ctx.runQuery(
+              api.meetings.getSpeakerDetailsById,
+              //@ts-ignore
+              { speakerId: details.speakerId }
+            );
 
-      // console.log("Runpod response data:", runpodResponse);
+            // Merge the score from the search result with the fetched details
+            return { ...details, score: result._score, speaker };
+          })
+        );
+      return resultsWithDetails;
+      // return results;
     } catch (error) {
       console.error("Failed to fetch transcript:", error);
     }
+  },
+});
+
+export const fetchAudioEmbeddingDetails = internalQuery({
+  args: { embeddingId: v.id("audioEmbeddings") },
+  handler: async (ctx, { embeddingId }) => {
+    const embeddingDetails = await ctx.db.get(embeddingId);
+    if (!embeddingDetails) {
+      throw new Error("Embedding details not found");
+    }
+    return {
+      meetingID: embeddingDetails.meetingID,
+      speakerNumber: embeddingDetails.speakerNumber || -1, // provide a default value like 0
+      speakerId: embeddingDetails.speakerId || "",
+      embeddingId: embeddingDetails._id,
+    };
   },
 });
 
@@ -419,6 +481,7 @@ export const processAudioEmbedding = action({
     storageId: v.id("_storage"), // The ID of the uploaded file in Convex storage
     meetingID: v.id("meetings"),
     speakerNumber: v.number(),
+    speakerId: v.id("speakers"),
   },
   handler: async (ctx, args) => {
     const user = await ctx.auth.getUserIdentity();
@@ -436,6 +499,7 @@ export const processAudioEmbedding = action({
         {
           meetingID: args.meetingID,
           speakerNumber: args.speakerNumber,
+          speakerId: args.speakerId,
           delayTime: runpodResponse.delayTime,
           executionTime: runpodResponse.executionTime,
           runPodId: runpodResponse.id,
@@ -456,6 +520,7 @@ export const addAudioEmbedding = internalMutation({
   args: {
     meetingID: v.id("meetings"),
     speakerNumber: v.number(),
+    speakerId: v.id("speakers"),
     delayTime: v.float64(),
     executionTime: v.float64(),
     runPodId: v.string(),
@@ -467,6 +532,7 @@ export const addAudioEmbedding = internalMutation({
     const embeddingId = await db.insert("audioEmbeddings", {
       meetingID: args.meetingID,
       speakerNumber: args.speakerNumber,
+      speakerId: args.speakerId,
       storageId: args.storageId,
       audioEmbedding: args.audioEmbedding,
       delayTime: args.delayTime,
