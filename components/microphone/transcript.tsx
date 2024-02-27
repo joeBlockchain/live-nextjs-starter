@@ -21,6 +21,9 @@ import { Separator } from "@/components/ui/separator";
 import { User, X } from "lucide-react";
 import type { SpeakerDetail, FinalizedSentence } from "../microphone"; // Assuming these types are exported from microphone.tsx
 
+//import spinner stuff
+import PulseLoader from "react-spinners/PulseLoader";
+
 interface CaptionDetail {
   words: string;
   isFinal: boolean;
@@ -218,20 +221,29 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                   </div>
                 </div>
                 <Separator className="my-5" />
+
                 <h4 className="font-medium leading-none mb-2">
                   Predicted Names
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  AI predicted based on your previous meetings:
+                  AI predictictions based on your previous meetings:
                 </p>
                 {speaker.predictedNames &&
                   speaker.predictedNames.length == 0 && (
-                    <p className="text-sm text-muted-foreground">
-                      No predictions found... yet
-                    </p>
+                    <div className="flex flex-row items-end text-sm text-muted-foreground mt-2">
+                      <p className="">Please speak a bit longer</p>
+                      <PulseLoader color="#9CA3AF" size={3} />
+                    </div>
                   )}
                 {speaker.predictedNames &&
-                  speaker.predictedNames.length > 0 && (
+                  speaker.predictedNames.length > 0 &&
+                  (speaker.predictedNames[0].name === "analyzing" &&
+                  speaker.predictedNames[0].score === 1 ? (
+                    <div className="flex flex-row items-end text-sm text-muted-foreground mt-2">
+                      <p className="">Analyzing speaker</p>
+                      <PulseLoader color="#9CA3AF" size={3} />
+                    </div>
+                  ) : (
                     <RadioGroup
                       className="space-y-4 mt-5"
                       defaultValue={speaker.predictedNames[0].embeddingId} // Adjust if necessary
@@ -267,7 +279,7 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                         </div>
                       ))}
                     </RadioGroup>
-                  )}
+                  ))}
               </PopoverContent>
             </Popover>
           </div>

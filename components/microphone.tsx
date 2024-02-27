@@ -129,6 +129,8 @@ export default function Microphone({
   setFinalCaptions,
   initialDuration,
 }: MicrophoneProps) {
+  const isInitialLoad = useRef(true); //use to stop functions from running if we are opeining a meeting from the db
+
   const { add, remove, first, size, queue } = useQueue<any>([]);
 
   const [apiKey, setApiKey] = useState<CreateProjectKeyResponse | null>();
@@ -884,21 +886,48 @@ export default function Microphone({
 
   // Inside the handleFinalizedSentencesChange effect, calculate the time elapsed since the last call
   useEffect(() => {
-    const startTime = new Date();
-    const targetSentence = finalizedSentences[finalizedSentences.length - 1];
-    // console.log(
-    //   `Timer started at: ${startTime.toLocaleTimeString()} when finalizedSentences length is: ${
-    //     finalizedSentences.length
-    //   }`
-    // );
+    // Skip the effect logic on initial load
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false; // Mark as not initial load for subsequent renders
+      return;
+    }
 
-    // Set a timer to log the message 5 seconds after the length changes
-    const timer = setTimeout(() => {
-      const endTime = new Date();
-      if (targetSentence) {
-        updateSpeakerPredictedNames(targetSentence, audioBlobs);
-      }
-    }, 5000);
+    if (finalizedSentences.length > 0) {
+      const startTime = new Date();
+      const targetSentence = finalizedSentences[finalizedSentences.length - 1];
+
+      // Set a timer to log the message 5 seconds after the length changes
+      const timer = setTimeout(() => {
+        const endTime = new Date();
+
+        if (targetSentence) {
+          // Update speakerDetails state to set predictedNames to "analyzing" for the target sentence's speaker
+          setSpeakerDetails((currentSpeakerDetails) =>
+            currentSpeakerDetails.map((speakerDetail) => {
+              if (speakerDetail.speakerNumber === targetSentence.speaker) {
+                return {
+                  ...speakerDetail,
+                  // Update predictedNames to "analyzing"
+                  predictedNames: [
+                    {
+                      name: "analyzing",
+                      score: 1,
+                      speakerId: "",
+                      embeddingId: "",
+                    },
+                  ],
+                };
+              }
+              return speakerDetail;
+            })
+          );
+
+          updateSpeakerPredictedNames(targetSentence, audioBlobs);
+        }
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
   }, [finalizedSentences.length]);
 
   const updateSpeakerPredictedNames = async (
