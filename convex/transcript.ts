@@ -455,7 +455,7 @@ export const getNearestMatchingSpeakers = action({
       return resultsWithDetails;
       // return results;
     } catch (error) {
-      console.error("Failed to fetch transcript:", error);
+      console.error("Failed to getNearestMatchingSpeakers:", error);
     }
   },
 });
@@ -511,7 +511,7 @@ export const processAudioEmbedding = action({
 
       // console.log("Runpod response data:", runpodResponse);
     } catch (error) {
-      console.error("Failed to fetch transcript:", error);
+      console.error("Failed to processAudioEmbedding:", error);
     }
   },
 });

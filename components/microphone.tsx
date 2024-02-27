@@ -621,7 +621,7 @@ export default function Microphone({
     let endIndex = Math.floor(sentence.end / 0.5);
 
     // Ensure that the maximum number of blobs from startIndex is limited to 10
-    const maxBlobs = 10;
+    const maxBlobs = 100;
     endIndex = Math.min(startIndex + maxBlobs - 1, endIndex);
 
     // Include the first blob for header information
@@ -879,15 +879,99 @@ export default function Microphone({
     [meetingID, handleNewSpeaker, setFinalizedSentences]
   );
 
+  // // At the beginning of your Microphone component, add a useRef hook to store the last timestamp
+  const lastCallTimestampRef = useRef<Date | null>(null);
+
+  // Inside the handleFinalizedSentencesChange effect, calculate the time elapsed since the last call
+  useEffect(() => {
+    const startTime = new Date();
+    const targetSentence = finalizedSentences[finalizedSentences.length - 1];
+    // console.log(
+    //   `Timer started at: ${startTime.toLocaleTimeString()} when finalizedSentences length is: ${
+    //     finalizedSentences.length
+    //   }`
+    // );
+
+    // Set a timer to log the message 5 seconds after the length changes
+    const timer = setTimeout(() => {
+      const endTime = new Date();
+      if (targetSentence) {
+        updateSpeakerPredictedNames(targetSentence, audioBlobs);
+      }
+    }, 5000);
+  }, [finalizedSentences.length]);
+
+  const updateSpeakerPredictedNames = async (
+    lastSentence: FinalizedSentence,
+    audioBlobs: Blob[]
+  ) => {
+    try {
+      const sectionAudioBlob = generateAudioBlobForSentence(
+        lastSentence,
+        audioBlobs
+      );
+      const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
+      const matches = await runGetNearestMatchingSpeakers({
+        storageId: storageId as Id<"_storage">,
+      });
+
+      // Update the predictedNames for the specific speaker
+      setSpeakerDetails((currentSpeakerDetails) =>
+        currentSpeakerDetails.map((speakerDetail) => {
+          if (speakerDetail.speakerNumber === lastSentence.speaker) {
+            const updatedPredictedNames = matches?.map((match) => ({
+              embeddingId: match.embeddingId,
+              speakerId: match.speakerId,
+              name: match.speaker[0].firstName,
+              score: match.score,
+            }));
+
+            let highestScoringMatch = null;
+            if (updatedPredictedNames && updatedPredictedNames.length > 0) {
+              highestScoringMatch = updatedPredictedNames.reduce(
+                (prev, current) =>
+                  prev.score > current.score ? prev : current,
+                updatedPredictedNames[0]
+              );
+            }
+
+            if (
+              !speakerDetail.firstName &&
+              !speakerDetail.lastName &&
+              highestScoringMatch &&
+              highestScoringMatch.score > 0.8
+            ) {
+              const firstNameFromHighestScore = highestScoringMatch?.name || "";
+              return {
+                ...speakerDetail,
+                firstName: firstNameFromHighestScore,
+                predictedNames: updatedPredictedNames,
+              };
+            } else {
+              return {
+                ...speakerDetail,
+                predictedNames: updatedPredictedNames,
+              };
+            }
+          }
+          return speakerDetail;
+        })
+      );
+    } catch (error) {
+      console.error("Error updating speaker predicted names:", error);
+    }
+  };
+
   //detect when speakerchanges in finalized sentences and save the last sentence to the db
   useEffect(() => {
     const handleFinalizedSentencesChange = async () => {
       let currentLength = finalizedSentences.length;
+
       // Your logic here to handle changes in finalizedSentences
       if (currentLength > 1) {
         // if greater than 2 then we have our first complete sentence from our first speaker
         const lastSentence = finalizedSentences[currentLength - 2];
-
+        //step 1
         const sentenceID = await storeFinalizedSentence({
           meetingID: meetingID,
           speaker: lastSentence.speaker,
@@ -895,57 +979,10 @@ export default function Microphone({
           start: lastSentence.start,
           end: lastSentence.end,
         });
-        const sectionAudioBlob = generateAudioBlobForSentence(
-          lastSentence,
-          audioBlobs
-        );
-        const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
-        const matches = await runGetNearestMatchingSpeakers({
-          storageId: storageId as Id<"_storage">,
-        });
-        // Update the predictedNames for the specific speaker
-        setSpeakerDetails((currentSpeakerDetails) =>
-          currentSpeakerDetails.map((speakerDetail) => {
-            if (speakerDetail.speakerNumber === lastSentence.speaker) {
-              // Assuming currentSpeaker is the speaker number you're updating
-              const updatedPredictedNames = matches?.map((match) => ({
-                embeddingId: match.embeddingId, // Assuming the match object has an id property
-                speakerId: match.speakerId, // Assuming the match object has an id property
-                name: match.speaker[0].firstName, // Assuming the match object has a name property
-                score: match.score, // Assuming the match object has a score property
-              }));
 
-              // Find the highest scoring match
-              const highestScoringMatch = updatedPredictedNames?.reduce(
-                (prev, current) => (prev.score > current.score ? prev : current)
-              );
+        // Call the new function to update speaker predicted names
+        await updateSpeakerPredictedNames(lastSentence, audioBlobs);
 
-              // Check if firstName and lastName are blank and the highest score is greater than 0.80
-              if (
-                !speakerDetail.firstName &&
-                !speakerDetail.lastName &&
-                highestScoringMatch?.score! > 0.8
-              ) {
-                // If so, populate firstName with the name from the highest scoring match
-                const firstNameFromHighestScore =
-                  highestScoringMatch?.name || "";
-
-                return {
-                  ...speakerDetail,
-                  firstName: firstNameFromHighestScore,
-                  predictedNames: updatedPredictedNames,
-                };
-              } else {
-                // If firstName or lastName is not blank, or no match scores above 0.80, just update predictedNames
-                return {
-                  ...speakerDetail,
-                  predictedNames: updatedPredictedNames,
-                };
-              }
-            }
-            return speakerDetail;
-          })
-        );
         if (sentenceID) {
           //consider doing something with the sentenceID
         } else {
