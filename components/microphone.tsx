@@ -947,42 +947,44 @@ export default function Microphone({
   const processedSpeakersRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    // Check if there are any finalized sentences
-    if (finalizedSentences.length > 0) {
-      // Get the last sentence from the finalizedSentences array
-      const lastSentence = finalizedSentences[finalizedSentences.length - 1];
-      // Calculate the duration of the last sentence
-      const sentenceDuration = lastSentence.end - lastSentence.start;
+    if (isListening) {
+      // Check if there are any finalized sentences
+      if (finalizedSentences.length > 0) {
+        // Get the last sentence from the finalizedSentences array
+        const lastSentence = finalizedSentences[finalizedSentences.length - 1];
+        // Calculate the duration of the last sentence
+        const sentenceDuration = lastSentence.end - lastSentence.start;
 
-      // Check if the duration is greater than 5 seconds and the speaker hasn't been processed yet
-      if (
-        sentenceDuration > 5 &&
-        !processedSpeakersRef.current.has(lastSentence.speaker)
-      ) {
-        // Call updateSpeakerPredictedNames with the last sentence and audioBlobs
-        updateSpeakerPredictedNames(lastSentence, audioBlobs).catch(
-          console.error
-        );
+        // Check if the duration is greater than 5 seconds and the speaker hasn't been processed yet
+        if (
+          sentenceDuration > 5 &&
+          !processedSpeakersRef.current.has(lastSentence.speaker)
+        ) {
+          // Call updateSpeakerPredictedNames with the last sentence and audioBlobs
+          updateSpeakerPredictedNames(lastSentence, audioBlobs).catch(
+            console.error
+          );
 
-        console.log("speakerdetails", speakerDetails);
-        // update chanceSpeakerDetailsByID with status "analyzing"
-        // Find the speaker detail by speaker number
-        const speakerDetail = speakerDetails.find(
-          (detail) => detail.speakerNumber === lastSentence.speaker
-        );
+          console.log("calling predicted speaker for ", lastSentence);
+          // update chanceSpeakerDetailsByID with status "analyzing"
+          // Find the speaker detail by speaker number
+          const speakerDetail = speakerDetails.find(
+            (detail) => detail.speakerNumber === lastSentence.speaker
+          );
 
-        if (speakerDetail) {
-          const result = changeSpeakerDetailsByID({
-            speakerId: speakerDetail._id as Id<"speakers">,
-            speakerNumber: speakerDetail.speakerNumber,
-            firstName: speakerDetail.firstName,
-            lastName: speakerDetail.lastName,
-            voiceAnalysisStatus: "analyzing",
-            predictedNames: speakerDetail.predictedNames,
-          });
+          if (speakerDetail) {
+            const result = changeSpeakerDetailsByID({
+              speakerId: speakerDetail._id as Id<"speakers">,
+              speakerNumber: speakerDetail.speakerNumber,
+              firstName: speakerDetail.firstName,
+              lastName: speakerDetail.lastName,
+              voiceAnalysisStatus: "analyzing",
+              predictedNames: speakerDetail.predictedNames,
+            });
 
-          // Mark the speaker as processed by adding their number to the set
-          processedSpeakersRef.current.add(lastSentence.speaker);
+            // Mark the speaker as processed by adding their number to the set
+            processedSpeakersRef.current.add(lastSentence.speaker);
+          }
         }
       }
     }
