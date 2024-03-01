@@ -87,7 +87,7 @@ export interface SpeakerDetail {
   meetingID: Id<"meetings">;
   speakerId?: Id<"speakers">;
   _id?: Id<"speakers">;
-  voiceAnalysisStatus: "analyzing" | "completed" | "pending";
+  voiceAnalysisStatus: "analyzing" | "completed" | "pending" | "failed";
   predictedNames?: {
     userSelected: boolean;
     name: string;

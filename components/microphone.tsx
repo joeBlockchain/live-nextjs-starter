@@ -91,7 +91,7 @@ export interface SpeakerDetail {
   meetingID: Id<"meetings">;
   speakerId?: Id<"speakers">;
   _id?: Id<"speakers">;
-  voiceAnalysisStatus: "analyzing" | "completed" | "pending";
+  voiceAnalysisStatus: "analyzing" | "completed" | "pending" | "failed";
   predictedNames?: {
     userSelected: boolean;
     name: string;
@@ -958,6 +958,20 @@ export default function Microphone({
           const futureTargetSentence =
             finalizedSentences[finalizedSentences.length - 1];
           if (futureTargetSentence) {
+            // Find the current speaker detail
+            const currentSpeakerDetail = speakerDetails.find(
+              (detail) => detail.speakerNumber === futureTargetSentence.speaker
+            );
+
+            // Check if voiceAnalysisStatus is not null or empty
+            if (
+              currentSpeakerDetail &&
+              currentSpeakerDetail.voiceAnalysisStatus
+            ) {
+              // If voiceAnalysisStatus has a value, eject from the function
+              return;
+            }
+
             // await changeSpeakerDetailsByID({
             //   speakerId: speaker._id!, // need to fix this as we added _id latter and should update the interface
             //   speakerNumber: id,
@@ -968,8 +982,6 @@ export default function Microphone({
             // });
 
             // Update speakerDetails state to set predictedNames to "analyzing" for the target sentence's speaker
-            console.log("currentSpeakerDertails", speakerDetails);
-
             //this is not ideal because we are updating the local state and not the convexdb
 
             setSpeakerDetails((currentSpeakerDetails) =>
@@ -977,7 +989,6 @@ export default function Microphone({
                 if (
                   speakerDetail.speakerNumber === futureTargetSentence.speaker
                 ) {
-                  console.log("speakerDetail", speakerDetail);
                   return {
                     ...speakerDetail,
                     // Update predictedNames to "analyzing"
@@ -1037,9 +1048,6 @@ export default function Microphone({
             start: lastSentence.start,
             end: lastSentence.end,
           });
-
-          // Call the new function to update speaker predicted names
-          await updateSpeakerPredictedNames(lastSentence, audioBlobs);
 
           // When updating storedSentences, ensure all properties match the StoredSentence interface
           if (sentenceID) {

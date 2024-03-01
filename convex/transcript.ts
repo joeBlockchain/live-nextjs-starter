@@ -23,7 +23,7 @@ interface Speaker {
   meetingID: string;
   predictedNames?: PredictedName[];
   speakerNumber: number;
-  voiceAnalysisStatus: "analyzing" | "completed" | "pending";
+  voiceAnalysisStatus?: "analyzing" | "completed" | "pending" | "failed";
 }
 
 interface PredictedName {
@@ -409,6 +409,7 @@ export const getNearestMatchingSpeakers = action({
     speakerNumber: v.number(),
   },
   handler: async (ctx, args) => {
+    let speakerId;
     try {
       const user = await ctx.auth.getUserIdentity();
 
@@ -417,7 +418,7 @@ export const getNearestMatchingSpeakers = action({
       }
 
       const currentUserID = user.subject;
-      const speakerId = await ctx.runQuery(
+      speakerId = await ctx.runQuery(
         internal.transcript.lookupSpeakerIdBySpeakerNumber,
         {
           meetingId: args.meetingId,
@@ -440,9 +441,6 @@ export const getNearestMatchingSpeakers = action({
           filter: (q) => q.eq("userId", currentUserID),
         }
       );
-
-      // Initialize predictedMatches outside of the loop
-      let predictedMatches: any[] = [];
 
       // Fetch additional details for each result using the internal query
       const resultsWithDetails: (AudioEmbeddingDetail & { score: number })[] =
@@ -493,6 +491,14 @@ export const getNearestMatchingSpeakers = action({
       // return results;
     } catch (error) {
       console.error("Failed to getNearestMatchingSpeakers:", error);
+      // If the process fails, update the status to "failed"
+      if (speakerId) {
+        await ctx.runMutation(internal.transcript.updatePredictedMatches, {
+          speakerId: speakerId,
+          predictedMatches: [], // Assuming no matches to update if the process failed
+          voiceAnalysisStatus: "failed",
+        });
+      }
     }
   },
 });
@@ -534,7 +540,8 @@ export const updatePredictedMatches = internalMutation({
     voiceAnalysisStatus: v.union(
       v.literal("analyzing"),
       v.literal("completed"),
-      v.literal("pending")
+      v.literal("pending"),
+      v.literal("failed")
     ),
   },
   handler: async (ctx, args) => {

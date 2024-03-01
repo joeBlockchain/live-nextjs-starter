@@ -89,7 +89,8 @@ export const addSpeaker = mutation({
     voiceAnalysisStatus: v.union(
       v.literal("analyzing"),
       v.literal("completed"),
-      v.literal("pending")
+      v.literal("pending"),
+      v.literal("failed")
     ),
     predictedNames: v.optional(
       v.array(
@@ -145,7 +146,8 @@ export const changeSpeakerDetailsByID = mutation({
     voiceAnalysisStatus: v.union(
       v.literal("analyzing"),
       v.literal("completed"),
-      v.literal("pending")
+      v.literal("pending"),
+      v.literal("failed")
     ),
     predictedNames: v.optional(
       v.array(

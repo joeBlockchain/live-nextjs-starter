@@ -39,10 +39,13 @@ export default defineSchema({
     speakerNumber: v.number(),
     firstName: v.string(),
     lastName: v.string(),
-    voiceAnalysisStatus: v.union(
-      v.literal("analyzing"),
-      v.literal("completed"),
-      v.literal("pending")
+    voiceAnalysisStatus: v.optional(
+      v.union(
+        v.literal("analyzing"),
+        v.literal("completed"),
+        v.literal("pending"),
+        v.literal("failed")
+      )
     ),
     predictedNames: v.optional(
       v.array(
