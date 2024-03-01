@@ -58,10 +58,16 @@ type Meeting = {
 
 interface FinalizedSentence {
   speaker: number;
+  speakerId?: Id<"speakers">;
   transcript: string;
   start: number;
   end: number;
   meetingID: Id<"meetings">;
+}
+
+interface StoredSentence {
+  id: Id<"finalizedSentences">;
+  // Include other properties of a stored sentence that you might need
 }
 
 interface CaptionDetail {
@@ -84,13 +90,16 @@ export interface SpeakerDetail {
   lastName: string;
   embeddingId?: Id<"audioEmbeddings">;
   meetingID: Id<"meetings">;
-  speakerID?: Id<"speakers">; // Add this line
+  speakerId?: Id<"speakers">;
+  _id?: Id<"speakers">;
+  voiceAnalysisStatus: "analyzing" | "completed" | "pending";
   predictedNames?: {
+    userSelected: boolean;
     name: string;
     score: number;
     speakerId: string;
     embeddingId: string;
-  }[]; // Add this line
+  }[];
 }
 
 export interface QuestionDetail {
@@ -145,6 +154,8 @@ export default function Page({
   const [finalizedSentences, setFinalizedSentences] = useState<
     FinalizedSentence[]
   >([]);
+  const [storedSentences, setStoredSentences] = useState<StoredSentence[]>([]);
+
   const [speakerDetails, setSpeakerDetails] = useState<SpeakerDetail[]>([]);
   const [caption, setCaption] = useState<CaptionDetail | null>(null);
   const [finalCaptions, setFinalCaptions] = useState<WordDetail[]>([]);
@@ -183,15 +194,37 @@ export default function Page({
   // New state for managing questions
   const [questions, setQuestions] = useState<QuestionDetail[]>([]);
 
+  const deleteFinalizedSentenceById = useMutation(
+    api.transcript.deleteFinalizedSentence
+  );
+  const deleteSpeakerById = useMutation(api.meetings.deleteSpeaker);
+
   const removeFinalizedSentence = useCallback(
-    (index: number) => {
+    async (index: number) => {
       // Retrieve the sentence to be deleted
       const sentenceToRemove = finalizedSentences[index];
 
       // Update finalizedSentences by removing the sentence at the specified index
-      setFinalizedSentences((currentSentences) =>
-        currentSentences.filter((_, i) => i !== index)
-      );
+      setFinalizedSentences((currentSentences) => {
+        const updatedSentences = currentSentences.filter((_, i) => i !== index);
+
+        // Check if there are any sentences left for the speaker of the removed sentence
+        const speakerSentencesLeft = updatedSentences.some(
+          (sentence) => sentence.speaker === sentenceToRemove.speaker
+        );
+
+        if (!speakerSentencesLeft) {
+          // Use speakerNumber to find the speakerID from speakerDetails
+          const speakerDetail = speakerDetails.find(
+            (detail) => detail.speakerNumber === sentenceToRemove.speaker
+          );
+          if (speakerDetail && speakerDetail._id) {
+            // If a matching speaker is found and has a speakerID, delete the speaker
+            deleteSpeakerById({ speakerId: speakerDetail._id });
+          }
+        }
+        return updatedSentences;
+      });
 
       // Update finalCaptions by removing words that fall within the start and end time of the sentenceToRemove
       setFinalCaptions((currentCaptions) =>
@@ -202,6 +235,14 @@ export default function Page({
               caption.end <= sentenceToRemove.end
             )
         )
+      );
+
+      // if sentence was stored in DB remove it
+      deleteFinalizedSentenceById({
+        sentenceId: storedSentences[index].id,
+      }).catch(console.error);
+      setStoredSentences((currentSentences) =>
+        currentSentences.filter((_, i) => i !== index)
       );
     },
     [finalizedSentences, setFinalizedSentences, setFinalCaptions]
@@ -234,6 +275,8 @@ export default function Page({
           language={language}
           finalizedSentences={finalizedSentences}
           setFinalizedSentences={setFinalizedSentences}
+          storedSentences={storedSentences}
+          setStoredSentences={setStoredSentences}
           speakerDetails={speakerDetails}
           setSpeakerDetails={setSpeakerDetails}
           setCaption={setCaption}

@@ -37,17 +37,27 @@ type MeetingSummary = {
 
 interface FinalizedSentence {
   speaker: number;
+  speakerId?: Id<"speakers">;
   transcript: string;
   start: number;
   end: number;
   meetingID: Id<"meetings">;
 }
 
-interface SpeakerDetail {
+export interface SpeakerDetail {
   speakerNumber: number;
   firstName: string;
   lastName: string;
+  embeddingId?: Id<"audioEmbeddings">;
   meetingID: Id<"meetings">;
+  speakerID?: Id<"speakers">;
+  _id?: Id<"speakers">;
+  predictedNames?: {
+    name: string;
+    score: number;
+    speakerId: string;
+    embeddingId: string;
+  }[]; // Add this line
 }
 
 type NotePadProps = {

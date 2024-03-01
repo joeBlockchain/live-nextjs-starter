@@ -85,9 +85,16 @@ export const addSpeaker = mutation({
     speakerNumber: v.number(),
     firstName: v.string(),
     lastName: v.string(),
+
+    voiceAnalysisStatus: v.union(
+      v.literal("analyzing"),
+      v.literal("completed"),
+      v.literal("pending")
+    ),
     predictedNames: v.optional(
       v.array(
         v.object({
+          userSelected: v.boolean(),
           name: v.string(),
           score: v.float64(),
           speakerId: v.string(),
@@ -108,10 +115,65 @@ export const addSpeaker = mutation({
       speakerNumber: args.speakerNumber,
       firstName: args.firstName,
       lastName: args.lastName,
+      voiceAnalysisStatus: args.voiceAnalysisStatus,
       predictedNames: args.predictedNames,
     });
 
     return newSpeaker;
+  },
+});
+
+export const deleteSpeaker = mutation({
+  args: { speakerId: v.id("speakers") },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to delete a speaker");
+    }
+
+    await ctx.db.delete(args.speakerId);
+  },
+});
+
+export const changeSpeakerDetailsByID = mutation({
+  args: {
+    speakerId: v.id("speakers"),
+    speakerNumber: v.number(),
+    firstName: v.string(),
+    lastName: v.string(),
+    voiceAnalysisStatus: v.union(
+      v.literal("analyzing"),
+      v.literal("completed"),
+      v.literal("pending")
+    ),
+    predictedNames: v.optional(
+      v.array(
+        v.object({
+          userSelected: v.boolean(),
+          name: v.string(),
+          score: v.float64(),
+          speakerId: v.string(),
+          embeddingId: v.string(),
+        })
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to modify a speaker");
+    }
+
+    // Use db.patch to update the speaker details
+    await ctx.db.patch(args.speakerId, {
+      speakerNumber: args.speakerNumber,
+      firstName: args.firstName,
+      lastName: args.lastName,
+      voiceAnalysisStatus: args.voiceAnalysisStatus,
+      predictedNames: args.predictedNames,
+    });
   },
 });
 
