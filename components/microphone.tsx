@@ -944,69 +944,49 @@ export default function Microphone({
     [meetingID, handleNewSpeaker, setFinalizedSentences]
   );
 
-  // Inside the handleFinalizedSentencesChange effect, calculate the time elapsed since the last call
+  const processedSpeakersRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
-    // Skip the effect logic on initial load
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false; // Mark as not initial load for subsequent renders
-      return;
-    }
-    if (finalizedSentences.length > prevFinalizedSentencesLengthRef.current) {
-      if (finalizedSentences.length > 0) {
-        // Set a timer to log the message 5 seconds after the length changes
-        const timer = setTimeout(() => {
-          const futureTargetSentence =
-            finalizedSentences[finalizedSentences.length - 1];
-          if (futureTargetSentence) {
-            // Find the current speaker detail
-            const currentSpeakerDetail = speakerDetails.find(
-              (detail) => detail.speakerNumber === futureTargetSentence.speaker
-            );
+    // Check if there are any finalized sentences
+    if (finalizedSentences.length > 0) {
+      // Get the last sentence from the finalizedSentences array
+      const lastSentence = finalizedSentences[finalizedSentences.length - 1];
+      // Calculate the duration of the last sentence
+      const sentenceDuration = lastSentence.end - lastSentence.start;
 
-            // Check if voiceAnalysisStatus is not null or empty
-            if (
-              currentSpeakerDetail &&
-              currentSpeakerDetail.voiceAnalysisStatus
-            ) {
-              // If voiceAnalysisStatus has a value, eject from the function
-              return;
-            }
+      // Check if the duration is greater than 5 seconds and the speaker hasn't been processed yet
+      if (
+        sentenceDuration > 5 &&
+        !processedSpeakersRef.current.has(lastSentence.speaker)
+      ) {
+        // Call updateSpeakerPredictedNames with the last sentence and audioBlobs
+        updateSpeakerPredictedNames(lastSentence, audioBlobs).catch(
+          console.error
+        );
 
-            // await changeSpeakerDetailsByID({
-            //   speakerId: speaker._id!, // need to fix this as we added _id latter and should update the interface
-            //   speakerNumber: id,
-            //   firstName: newFirstName,
-            //   lastName: speaker.lastName,
-            //   predictedNames: speaker.predictedNames,
-            //   voiceAnalysisStatus: speaker.voiceAnalysisStatus,
-            // });
+        console.log("speakerdetails", speakerDetails);
+        // update chanceSpeakerDetailsByID with status "analyzing"
+        // Find the speaker detail by speaker number
+        const speakerDetail = speakerDetails.find(
+          (detail) => detail.speakerNumber === lastSentence.speaker
+        );
 
-            // Update speakerDetails state to set predictedNames to "analyzing" for the target sentence's speaker
-            //this is not ideal because we are updating the local state and not the convexdb
+        if (speakerDetail) {
+          const result = changeSpeakerDetailsByID({
+            speakerId: speakerDetail._id as Id<"speakers">,
+            speakerNumber: speakerDetail.speakerNumber,
+            firstName: speakerDetail.firstName,
+            lastName: speakerDetail.lastName,
+            voiceAnalysisStatus: "analyzing",
+            predictedNames: speakerDetail.predictedNames,
+          });
 
-            setSpeakerDetails((currentSpeakerDetails) =>
-              currentSpeakerDetails.map((speakerDetail) => {
-                if (
-                  speakerDetail.speakerNumber === futureTargetSentence.speaker
-                ) {
-                  return {
-                    ...speakerDetail,
-                    // Update predictedNames to "analyzing"
-                    voiceAnalysisStatus: "analyzing",
-                  };
-                }
-                return speakerDetail;
-              })
-            );
-
-            updateSpeakerPredictedNames(futureTargetSentence, audioBlobs);
-          }
-        }, 5000);
-
-        return () => clearTimeout(timer);
+          // Mark the speaker as processed by adding their number to the set
+          processedSpeakersRef.current.add(lastSentence.speaker);
+        }
       }
     }
-  }, [finalizedSentences.length]);
+  }, [finalizedSentences, audioBlobs]); // Depend on finalizedSentences and audioBlobs to re-run this effect when they change
 
   const updateSpeakerPredictedNames = async (
     lastSentence: FinalizedSentence,
