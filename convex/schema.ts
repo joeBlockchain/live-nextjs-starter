@@ -50,7 +50,7 @@ export default defineSchema({
     predictedNames: v.optional(
       v.array(
         v.object({
-          userSelected: v.boolean(),
+          userSelected: v.optional(v.boolean()),
           name: v.string(),
           score: v.float64(),
           speakerId: v.optional(v.string()),
