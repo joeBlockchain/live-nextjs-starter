@@ -457,8 +457,8 @@ export const getNearestMatchingSpeakers = action({
             // Fetch speaker detail here
             const speaker = await ctx.runQuery(
               api.meetings.getSpeakerDetailsById,
-              //@ts-ignore
-              { speakerId: details.speakerId }
+
+              { speakerId: details.speakerId as Id<"speakers"> }
             );
 
             // Ensure userSelected is always a boolean
