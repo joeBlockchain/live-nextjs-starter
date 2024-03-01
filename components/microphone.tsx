@@ -965,7 +965,6 @@ export default function Microphone({
             console.error
           );
 
-          console.log("calling predicted speaker for ", lastSentence);
           // update chanceSpeakerDetailsByID with status "analyzing"
           // Find the speaker detail by speaker number
           const speakerDetail = speakerDetails.find(

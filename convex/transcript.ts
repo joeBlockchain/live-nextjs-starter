@@ -443,6 +443,8 @@ export const getNearestMatchingSpeakers = action({
       );
 
       // Fetch additional details for each result using the internal query
+      //trying to get the ability to select a predicted speaker by the user,
+      //does not work
       const resultsWithDetails: (AudioEmbeddingDetail & { score: number })[] =
         await Promise.all(
           results.map(async (result) => {
@@ -459,8 +461,22 @@ export const getNearestMatchingSpeakers = action({
               { speakerId: details.speakerId }
             );
 
+            // Ensure userSelected is always a boolean
+            const speakerWithFixedPredictedNames = speaker.map((s) => ({
+              ...s,
+              predictedNames:
+                s.predictedNames?.map((pn) => ({
+                  ...pn,
+                  userSelected: pn.userSelected ?? false, // Default to false if undefined
+                })) ?? [],
+            }));
+
             // Merge the score from the search result with the fetched details
-            return { ...details, score: result._score, speaker };
+            return {
+              ...details,
+              score: result._score,
+              speaker: speakerWithFixedPredictedNames,
+            };
           })
         );
 
