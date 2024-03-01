@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useConvexAuth } from "convex/react";
 
 //import shadcnui stuff
 import { Separator } from "@/components/ui/separator";
@@ -114,6 +115,8 @@ export default function Page({
 }: {
   params: { meetingID: Id<"meetings">; language: string };
 }) {
+  const { isLoading, isAuthenticated } = useConvexAuth();
+
   const [date, setDate] = useState<Date>(new Date());
   // Add a new local state for the editable title
   const [editableTitle, setEditableTitle] = useState("");
