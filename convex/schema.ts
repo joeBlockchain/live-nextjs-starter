@@ -7,6 +7,7 @@ export default defineSchema({
     userId: v.optional(v.string()),
     meetingID: v.id("meetings"),
     speaker: v.number(),
+    speakerId: v.optional(v.id("speakers")),
     start: v.float64(),
     transcript: v.string(),
     sentenceEmbeddingId: v.optional(v.id("sentenceEmbeddings")),
@@ -38,9 +39,18 @@ export default defineSchema({
     speakerNumber: v.number(),
     firstName: v.string(),
     lastName: v.string(),
+    voiceAnalysisStatus: v.optional(
+      v.union(
+        v.literal("analyzing"),
+        v.literal("completed"),
+        v.literal("pending"),
+        v.literal("failed")
+      )
+    ),
     predictedNames: v.optional(
       v.array(
         v.object({
+          userSelected: v.boolean(),
           name: v.string(),
           score: v.float64(),
           speakerId: v.optional(v.string()),

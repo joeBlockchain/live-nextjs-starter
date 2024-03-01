@@ -72,6 +72,7 @@ interface Message {
 
 export interface FinalizedSentence {
   speaker: number;
+  speakerId?: Id<"speakers">;
   transcript: string;
   start: number;
   end: number;
@@ -84,13 +85,16 @@ export interface SpeakerDetail {
   lastName: string;
   embeddingId?: Id<"audioEmbeddings">;
   meetingID: Id<"meetings">;
-  speakerID?: Id<"speakers">; // Add this line
+  speakerId?: Id<"speakers">;
+  _id?: Id<"speakers">;
+  voiceAnalysisStatus: "analyzing" | "completed" | "pending" | "failed";
   predictedNames?: {
+    userSelected: boolean;
     name: string;
     score: number;
     speakerId: string;
     embeddingId: string;
-  }[]; // Add this line
+  }[];
 }
 
 export default function ChatCompletion({

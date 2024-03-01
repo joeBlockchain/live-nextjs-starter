@@ -51,6 +51,10 @@ import Dg from "@/app/dg.svg";
 import TranscriptDisplay from "@/components/microphone/transcript";
 import { extractSegment } from "@/lib/ffmpgUtils";
 
+type SpeakerEmbeddingsCount = {
+  [speakerNumber: number]: number;
+};
+
 interface CaptionDetail {
   words: string;
   isFinal: boolean;
@@ -74,19 +78,27 @@ export interface FinalizedSentence {
   meetingID: Id<"meetings">;
 }
 
+export interface StoredSentence {
+  id: Id<"finalizedSentences">;
+  speakerId?: Id<"speakers">;
+}
+
 export interface SpeakerDetail {
   speakerNumber: number;
   firstName: string;
   lastName: string;
   embeddingId?: Id<"audioEmbeddings">;
   meetingID: Id<"meetings">;
-  speakerID?: Id<"speakers">; // Add this line
+  speakerId?: Id<"speakers">;
+  _id?: Id<"speakers">;
+  voiceAnalysisStatus: "analyzing" | "completed" | "pending" | "failed";
   predictedNames?: {
+    userSelected: boolean;
     name: string;
     score: number;
     speakerId: string;
     embeddingId: string;
-  }[]; // Add this line
+  }[];
 }
 
 // Step 1: Define a QuestionDetail Interface
@@ -104,6 +116,8 @@ interface MicrophoneProps {
   setFinalizedSentences: React.Dispatch<
     React.SetStateAction<FinalizedSentence[]>
   >;
+  storedSentences: StoredSentence[]; // Add this line
+  setStoredSentences: React.Dispatch<React.SetStateAction<StoredSentence[]>>; // Add this line
   speakerDetails: SpeakerDetail[];
   setSpeakerDetails: React.Dispatch<React.SetStateAction<SpeakerDetail[]>>;
   caption: CaptionDetail | null;
@@ -121,6 +135,8 @@ export default function Microphone({
   language,
   finalizedSentences,
   setFinalizedSentences,
+  storedSentences, // Add this
+  setStoredSentences, // Add this
   speakerDetails,
   setSpeakerDetails,
   caption,
@@ -130,6 +146,8 @@ export default function Microphone({
   initialDuration,
 }: MicrophoneProps) {
   const isInitialLoad = useRef(true); //use to stop functions from running if we are opeining a meeting from the db
+  //detect when speakerchanges in finalized sentences and save the last sentence to the db
+  const prevFinalizedSentencesLengthRef = useRef(finalizedSentences.length);
 
   const { add, remove, first, size, queue } = useQueue<any>([]);
 
@@ -146,12 +164,11 @@ export default function Microphone({
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   // const [finalCaptions, setFinalCaptions] = useState<WordDetail[]>([]);
   //used for detecting speaker changes in finalized sentences so we write to the db when the speaker finishes
-  const lastSpeakerRef = useRef<number | null>(null);
-  const [lastFinalizedSentenceIndexSaved, setLastFinalizedSentenceIndexSaved] =
-    useState<number | null>(null);
 
   const retrieveSummary = useAction(api.meetingSummary.retrieveMeetingSummary);
-
+  const changeSpeakerDetailsByID = useMutation(
+    api.meetings.changeSpeakerDetailsByID
+  );
   // State for the timer
   const [timer, setTimer] = useState(0);
   const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(
@@ -213,7 +230,8 @@ export default function Microphone({
           storageId,
           meetingID,
           speakerNumber: speaker.speakerNumber,
-          speakerId: speaker.speakerID!,
+          //@ts-ignore
+          speakerId: speaker._id!, //need to fix, convex is sending _id I think so should just update the type interface
         }).then(() => {
           // Handle the response as needed
         });
@@ -272,8 +290,20 @@ export default function Microphone({
       if (
         !speakerDetails.some((detail) => detail.speakerNumber === speakerNumber)
       ) {
+        // Call the addSpeakerToDB mutation
+        const speakerId = await addSpeakerToDB({
+          meetingID,
+          speakerNumber,
+          firstName: "",
+          lastName: "",
+          voiceAnalysisStatus: "pending",
+          predictedNames: [],
+        });
+
         // Add new speaker with default names
         const newSpeaker: SpeakerDetail = {
+          speakerId: speakerId,
+          voiceAnalysisStatus: "pending",
           speakerNumber,
           firstName: "",
           lastName: "",
@@ -333,7 +363,17 @@ export default function Microphone({
         const data = await fetchFinalizedSentences(meetingID);
         // console.log("Finalized Sentences from DB:", data);
         // Here you can set the state with the fetched data
+        prevFinalizedSentencesLengthRef.current = data.length;
         setFinalizedSentences(data); // Assuming you have a state setter for finalized sentences
+
+        // Map over the fetched finalized sentences to prepare storedSentences
+        const storedSentencesData = data.map((sentence: FinalizedSentence) => ({
+          //@ts-ignore
+          id: sentence._id, // Assuming each sentence has an id field
+          // Add any other fields from FinalizedSentence that should be in StoredSentence
+        }));
+
+        setStoredSentences(storedSentencesData);
       } catch (error) {
         console.error("Failed to fetch finalized sentences:", error);
       }
@@ -347,6 +387,7 @@ export default function Microphone({
     if (!response.ok) {
       throw new Error("Failed to fetch finalized sentences");
     }
+
     const data = await response.json();
     return data;
   }
@@ -363,7 +404,6 @@ export default function Microphone({
     }
   }, [speakersFromDB, setSpeakerDetails]);
 
-  const createMeeting = useMutation(api.meetings.createMeeting);
   const updateMeeting = useMutation(api.meetings.updateMeetingDetails);
 
   const handleGenerateSummary = useCallback(async () => {
@@ -449,24 +489,26 @@ export default function Microphone({
       stopTimer(); // Stop the timer
       await updateMeeting({ meetingID, updates: { duration: timer } });
 
-      const speakerDetailsWithIds = await Promise.all(
-        speakerDetails.map(async (speaker) => {
-          // Assuming addSpeakerToDB correctly returns the ID of the newly added speaker
-          const speakerID = await addSpeakerToDB({
-            meetingID: speaker.meetingID,
-            speakerNumber: speaker.speakerNumber,
-            firstName: speaker.firstName,
-            lastName: speaker.lastName,
-            predictedNames: speaker.predictedNames,
-          });
-          // Return a new object combining the original speaker details with the new speakerID
-          return { ...speaker, speakerID };
-        })
-      );
+      //old code for saving the speaker details at and of meeting
+      // const speakerDetailsWithIds = await Promise.all(
+      //   speakerDetails.map(async (speaker) => {
+      //     // Assuming addSpeakerToDB correctly returns the ID of the newly added speaker
+      //     const speakerId = await addSpeakerToDB({
+      //       meetingID: speaker.meetingID,
+      //       speakerNumber: speaker.speakerNumber,
+      //       firstName: speaker.firstName,
+      //       lastName: speaker.lastName,
+      //       predictedNames: speaker.predictedNames,
+      //     });
+      //     // Return a new object combining the original speaker details with the new speakerID
+      //     return { ...speaker, speakerId };
+      //   })
+      // );
 
       // Store last finalized sentence in the database
       if (finalizedSentences.length > 0) {
         const lastSentence = finalizedSentences[finalizedSentences.length - 1];
+
         const sentenceID = await storeFinalizedSentence({
           meetingID: meetingID,
           speaker: lastSentence.speaker,
@@ -476,42 +518,63 @@ export default function Microphone({
         });
 
         if (sentenceID) {
+          //store the sentenceid in array of stored sentences ids
+          setStoredSentences((prevStoredSentences) => [
+            ...prevStoredSentences,
+            {
+              ...lastSentence,
+              id: sentenceID,
+            },
+          ]);
           //generate and save transctript text embeddings
           const sentenceEmbeddings = await createAndSaveEmbedding({
             meetingId: meetingID,
           });
-          // Check if sentenceID is not void
-          // const sentenceEmbedding = await generateAndSaveEmbedding({
-          //   finalizedSentenceId: sentenceID,
-          //   transcript: lastSentence.transcript,
-          //   meetingID: meetingID,
-          // });
-          // console.log("Stored sentence embedding:", sentenceEmbeddings);
 
-          //generate and save audio embeddings
-          // Iterate over all finalized sentences to upload their corresponding audio blobs
+          //now we work on the audio embeddings
+          const speakerEmbeddingsCount: SpeakerEmbeddingsCount = {}; //counter to limit max sentences for each speaker
+
           for (const sentence of finalizedSentences) {
-            const sectionAudioBlob = generateAudioBlobForSentence(
-              sentence,
-              audioBlobs
-            );
-            // Find the matching speaker detail with the speakerID
-            const speakerDetailWithId = speakerDetailsWithIds.find(
+            const sentenceDuration = sentence.end - sentence.start;
+
+            // Skip sentences shorter than 5 seconds
+            if (sentenceDuration < 5) {
+              continue; // Move to the next iteration of the loop
+            }
+
+            const speakerDetailWithId = speakerDetails.find(
               (speakerDetail) =>
                 speakerDetail.speakerNumber === sentence.speaker
             );
 
-            // Check if speakerDetailWithId exists and both firstName and lastName are not empty or null
+            // Initialize the count for this speaker if it hasn't been done yet
+            if (!speakerEmbeddingsCount[sentence.speaker]) {
+              speakerEmbeddingsCount[sentence.speaker] = 0;
+            }
+
+            // Check if we've already processed 10 embeddings for this speaker
+            if (speakerEmbeddingsCount[sentence.speaker] >= 10) {
+              continue; // Skip to the next iteration of the loop
+            }
+
             // Check if speakerDetailWithId exists and either firstName or lastName is not empty or null
             if (
               speakerDetailWithId &&
               (speakerDetailWithId.firstName || speakerDetailWithId.lastName)
             ) {
+              const sectionAudioBlob = generateAudioBlobForSentence(
+                sentence,
+                audioBlobs
+              );
+
               // Now speakerDetailWithId includes the speakerID
               uploadAudioBlob(sectionAudioBlob, speakerDetailWithId);
+
+              // Increment the count for this speaker
+              speakerEmbeddingsCount[sentence.speaker]++;
             } else {
               console.error(
-                "Speaker detail with ID not found for speaker number:",
+                "Speaker ID not found or speaker name is empty or null:",
                 sentence.speaker
               );
             }
@@ -622,8 +685,8 @@ export default function Microphone({
     const startIndex = Math.ceil(sentence.start / 0.5);
     let endIndex = Math.floor(sentence.end / 0.5);
 
-    // Ensure that the maximum number of blobs from startIndex is limited to 10
-    const maxBlobs = 100;
+    // Ensure that the maximum number of blobs from startIndex is limited
+    const maxBlobs = 100; // set to 100 for 500 ms = 50 seconds
     endIndex = Math.min(startIndex + maxBlobs - 1, endIndex);
 
     // Include the first blob for header information
@@ -850,6 +913,12 @@ export default function Microphone({
             endTime = wordDetail.end;
           }
 
+          // If we haven't handled this speaker yet, do so now
+          if (!handledSpeakers.includes(currentSpeaker)) {
+            handleNewSpeaker(currentSpeaker);
+            handledSpeakers.push(currentSpeaker);
+          }
+
           sentences.push({
             speaker: currentSpeaker,
             transcript: currentText.trim(),
@@ -857,12 +926,6 @@ export default function Microphone({
             end: endTime,
             meetingID: meetingID,
           });
-
-          // If we haven't handled this speaker yet, do so now
-          if (!handledSpeakers.includes(currentSpeaker)) {
-            handleNewSpeaker(currentSpeaker);
-            handledSpeakers.push(currentSpeaker);
-          }
 
           currentSpeaker = wordDetail.speaker;
           currentText = wordDetail.punctuated_word + " ";
@@ -881,54 +944,51 @@ export default function Microphone({
     [meetingID, handleNewSpeaker, setFinalizedSentences]
   );
 
-  // // At the beginning of your Microphone component, add a useRef hook to store the last timestamp
-  const lastCallTimestampRef = useRef<Date | null>(null);
+  const processedSpeakersRef = useRef<Set<number>>(new Set());
 
-  // Inside the handleFinalizedSentencesChange effect, calculate the time elapsed since the last call
   useEffect(() => {
-    // Skip the effect logic on initial load
-    if (isInitialLoad.current) {
-      isInitialLoad.current = false; // Mark as not initial load for subsequent renders
-      return;
-    }
+    if (isListening) {
+      // Check if there are any finalized sentences
+      if (finalizedSentences.length > 0) {
+        // Get the last sentence from the finalizedSentences array
+        const lastSentence = finalizedSentences[finalizedSentences.length - 1];
+        // Calculate the duration of the last sentence
+        const sentenceDuration = lastSentence.end - lastSentence.start;
 
-    if (finalizedSentences.length > 0) {
-      const startTime = new Date();
-      const targetSentence = finalizedSentences[finalizedSentences.length - 1];
-
-      // Set a timer to log the message 5 seconds after the length changes
-      const timer = setTimeout(() => {
-        const endTime = new Date();
-
-        if (targetSentence) {
-          // Update speakerDetails state to set predictedNames to "analyzing" for the target sentence's speaker
-          setSpeakerDetails((currentSpeakerDetails) =>
-            currentSpeakerDetails.map((speakerDetail) => {
-              if (speakerDetail.speakerNumber === targetSentence.speaker) {
-                return {
-                  ...speakerDetail,
-                  // Update predictedNames to "analyzing"
-                  predictedNames: [
-                    {
-                      name: "analyzing",
-                      score: 1,
-                      speakerId: "",
-                      embeddingId: "",
-                    },
-                  ],
-                };
-              }
-              return speakerDetail;
-            })
+        // Check if the duration is greater than 5 seconds and the speaker hasn't been processed yet
+        if (
+          sentenceDuration > 5 &&
+          !processedSpeakersRef.current.has(lastSentence.speaker)
+        ) {
+          // Call updateSpeakerPredictedNames with the last sentence and audioBlobs
+          updateSpeakerPredictedNames(lastSentence, audioBlobs).catch(
+            console.error
           );
 
-          updateSpeakerPredictedNames(targetSentence, audioBlobs);
-        }
-      }, 5000);
+          console.log("calling predicted speaker for ", lastSentence);
+          // update chanceSpeakerDetailsByID with status "analyzing"
+          // Find the speaker detail by speaker number
+          const speakerDetail = speakerDetails.find(
+            (detail) => detail.speakerNumber === lastSentence.speaker
+          );
 
-      return () => clearTimeout(timer);
+          if (speakerDetail) {
+            const result = changeSpeakerDetailsByID({
+              speakerId: speakerDetail._id as Id<"speakers">,
+              speakerNumber: speakerDetail.speakerNumber,
+              firstName: speakerDetail.firstName,
+              lastName: speakerDetail.lastName,
+              voiceAnalysisStatus: "analyzing",
+              predictedNames: speakerDetail.predictedNames,
+            });
+
+            // Mark the speaker as processed by adding their number to the set
+            processedSpeakersRef.current.add(lastSentence.speaker);
+          }
+        }
+      }
     }
-  }, [finalizedSentences.length]);
+  }, [finalizedSentences, audioBlobs]); // Depend on finalizedSentences and audioBlobs to re-run this effect when they change
 
   const updateSpeakerPredictedNames = async (
     lastSentence: FinalizedSentence,
@@ -940,87 +1000,57 @@ export default function Microphone({
         audioBlobs
       );
       const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
+
       const matches = await runGetNearestMatchingSpeakers({
         storageId: storageId as Id<"_storage">,
+        meetingId: meetingID,
+        speakerNumber: lastSentence.speaker,
       });
-
-      // Update the predictedNames for the specific speaker
-      setSpeakerDetails((currentSpeakerDetails) =>
-        currentSpeakerDetails.map((speakerDetail) => {
-          if (speakerDetail.speakerNumber === lastSentence.speaker) {
-            const updatedPredictedNames = matches?.map((match) => ({
-              embeddingId: match.embeddingId,
-              speakerId: match.speakerId,
-              name: match.speaker[0].firstName,
-              score: match.score,
-            }));
-
-            let highestScoringMatch = null;
-            if (updatedPredictedNames && updatedPredictedNames.length > 0) {
-              highestScoringMatch = updatedPredictedNames.reduce(
-                (prev, current) =>
-                  prev.score > current.score ? prev : current,
-                updatedPredictedNames[0]
-              );
-            }
-
-            if (
-              !speakerDetail.firstName &&
-              !speakerDetail.lastName &&
-              highestScoringMatch &&
-              highestScoringMatch.score > 0.8
-            ) {
-              const firstNameFromHighestScore = highestScoringMatch?.name || "";
-              return {
-                ...speakerDetail,
-                firstName: firstNameFromHighestScore,
-                predictedNames: updatedPredictedNames,
-              };
-            } else {
-              return {
-                ...speakerDetail,
-                predictedNames: updatedPredictedNames,
-              };
-            }
-          }
-          return speakerDetail;
-        })
-      );
     } catch (error) {
       console.error("Error updating speaker predicted names:", error);
     }
   };
 
-  //detect when speakerchanges in finalized sentences and save the last sentence to the db
   useEffect(() => {
-    const handleFinalizedSentencesChange = async () => {
-      let currentLength = finalizedSentences.length;
+    //only run if we are adding to the length of finalizedsentencse not if we are removing from it (ie: deleting)
+    if (finalizedSentences.length > prevFinalizedSentencesLengthRef.current) {
+      const handleFinalizedSentencesChange = async () => {
+        let currentLength = finalizedSentences.length;
 
-      // Your logic here to handle changes in finalizedSentences
-      if (currentLength > 1) {
-        // if greater than 2 then we have our first complete sentence from our first speaker
-        const lastSentence = finalizedSentences[currentLength - 2];
-        //step 1
-        const sentenceID = await storeFinalizedSentence({
-          meetingID: meetingID,
-          speaker: lastSentence.speaker,
-          transcript: lastSentence.transcript,
-          start: lastSentence.start,
-          end: lastSentence.end,
-        });
+        // Your logic here to handle changes in finalizedSentences
+        if (currentLength > 1) {
+          // if greater than 2 then we have our first complete sentence from our first speaker
+          const lastSentenceIndex = currentLength - 2;
+          const lastSentence = finalizedSentences[lastSentenceIndex];
+          //step 1
+          const sentenceID = await storeFinalizedSentence({
+            meetingID: meetingID,
+            speaker: lastSentence.speaker,
+            transcript: lastSentence.transcript,
+            start: lastSentence.start,
+            end: lastSentence.end,
+          });
 
-        // Call the new function to update speaker predicted names
-        await updateSpeakerPredictedNames(lastSentence, audioBlobs);
-
-        if (sentenceID) {
-          //consider doing something with the sentenceID
-        } else {
-          console.error("Failed to store sentence, sentenceID is void.");
+          // When updating storedSentences, ensure all properties match the StoredSentence interface
+          if (sentenceID) {
+            setStoredSentences((prevStoredSentences) => [
+              ...prevStoredSentences,
+              {
+                ...lastSentence,
+                id: sentenceID, // Ensure this is never undefined
+                // Add any missing properties here to match the StoredSentence interface
+              },
+            ]);
+          } else {
+            console.error("Failed to store sentence, sentenceID is void.");
+          }
         }
-      }
-    };
+      };
 
-    handleFinalizedSentencesChange();
+      handleFinalizedSentencesChange();
+    }
+
+    prevFinalizedSentencesLengthRef.current = finalizedSentences.length;
   }, [finalizedSentences.length]);
 
   //function to request predicted speakername based on speakernumber first time speaking

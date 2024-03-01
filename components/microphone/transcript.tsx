@@ -1,6 +1,11 @@
 //inport react stuff
 import React, { Dispatch, SetStateAction, useState } from "react";
 
+//import convex stuff
+import { useQuery, useMutation, useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+
 //import shadcnui stuff
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -24,6 +29,8 @@ import type { SpeakerDetail, FinalizedSentence } from "../microphone"; // Assumi
 //import spinner stuff
 import PulseLoader from "react-spinners/PulseLoader";
 
+//import custom stuff
+
 interface CaptionDetail {
   words: string;
   isFinal: boolean;
@@ -45,7 +52,10 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
   caption,
   removeFinalizedSentence,
 }) => {
-  // Moved inside TranscriptDisplay
+  const changeSpeakerDetailsByID = useMutation(
+    api.meetings.changeSpeakerDetailsByID
+  );
+
   const handleFirstNameChange = (id: number, newFirstName: string) => {
     setSpeakerDetails((prevSpeakers) =>
       prevSpeakers.map((speaker) =>
@@ -56,6 +66,29 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
     );
   };
 
+  const updateFirstNameInDatabase = async (
+    id: number,
+    newFirstName: string
+  ) => {
+    const speaker = speakerDetails.find(
+      (speaker) => speaker.speakerNumber === id
+    ) as SpeakerDetail;
+    if (speaker) {
+      try {
+        await changeSpeakerDetailsByID({
+          speakerId: speaker._id!, // need to fix this as we added _id latter and should update the interface
+          speakerNumber: id,
+          firstName: newFirstName,
+          lastName: speaker.lastName,
+          predictedNames: speaker.predictedNames,
+          voiceAnalysisStatus: speaker.voiceAnalysisStatus,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
+
   const handleLastNameChange = (id: number, newLastName: string) => {
     setSpeakerDetails((prevSpeakers) =>
       prevSpeakers.map((speaker) =>
@@ -64,6 +97,27 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
           : speaker
       )
     );
+  };
+
+  const updateLastNameInDatabase = async (id: number, newLastName: string) => {
+    const speaker = speakerDetails.find(
+      (speaker) => speaker.speakerNumber === id
+    ) as SpeakerDetail;
+
+    if (speaker) {
+      try {
+        await changeSpeakerDetailsByID({
+          speakerId: speaker._id!, // Assuming speakerID is the correct identifier
+          speakerNumber: id,
+          firstName: speaker.firstName,
+          lastName: newLastName,
+          predictedNames: speaker.predictedNames,
+          voiceAnalysisStatus: speaker.voiceAnalysisStatus,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
   };
 
   const getSpeakerName = (speakerNumber: number) => {
@@ -92,34 +146,11 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
       return; // Guard clause to handle undefined predictedNames
     }
 
-    // Filter records with the selected name
-    const recordsWithName = predictedNames.filter(
-      (predictedName) => predictedName.name === selectedName
-    );
+    // Directly use handleFirstNameChange to update the local state
+    handleFirstNameChange(speakerNumber, selectedName);
 
-    if (recordsWithName.length === 0) {
-      console.log("No matching predicted name found for the selected name.");
-      return;
-    }
-
-    // Find the record with the maximum score among those with the selected name
-    const selectedPredictedName = recordsWithName.reduce(
-      (maxRecord, currentRecord) =>
-        (maxRecord.score || 0) > (currentRecord.score || 0)
-          ? maxRecord
-          : currentRecord
-    );
-
-    // Update the speaker details with the selected predicted name
-    setSpeakerDetails((prevSpeakers) => {
-      const updatedSpeakers = prevSpeakers.map((speaker) => {
-        if (speaker.speakerNumber === speakerNumber) {
-          return { ...speaker, firstName: selectedPredictedName.name };
-        }
-        return speaker;
-      });
-      return updatedSpeakers;
-    });
+    // Then, use updateFirstNameInDatabase to persist the change
+    updateFirstNameInDatabase(speakerNumber, selectedName);
   };
 
   const groupPredictedNamesAndMaxScores = (
@@ -199,6 +230,21 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                             e.target.value
                           )
                         }
+                        onBlur={() =>
+                          updateFirstNameInDatabase(
+                            speaker.speakerNumber,
+                            speaker.firstName
+                          )
+                        }
+                        onKeyUp={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault(); // Prevent form submission if wrapped in a form
+                            updateFirstNameInDatabase(
+                              speaker.speakerNumber,
+                              speaker.firstName
+                            );
+                          }
+                        }}
                         className="col-span-2 h-8"
                       />
                     </div>
@@ -215,71 +261,109 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                             e.target.value
                           )
                         }
+                        onBlur={() =>
+                          updateLastNameInDatabase(
+                            speaker.speakerNumber,
+                            speaker.lastName
+                          )
+                        }
+                        onKeyUp={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault(); // Prevent form submission if wrapped in a form
+                            updateLastNameInDatabase(
+                              speaker.speakerNumber,
+                              speaker.lastName
+                            );
+                          }
+                        }}
                         className="col-span-2 h-8"
                       />
                     </div>
                   </div>
                 </div>
                 <Separator className="my-5" />
-
-                <h4 className="font-medium leading-none mb-2">
-                  Predicted Names
-                </h4>
-                <p className="text-sm text-muted-foreground">
-                  AI predictictions based on your previous meetings:
-                </p>
-                {speaker.predictedNames &&
-                  speaker.predictedNames.length == 0 && (
-                    <div className="flex flex-row items-end text-sm text-muted-foreground mt-2">
-                      <p className="">Please speak a bit longer</p>
-                      <PulseLoader color="#9CA3AF" size={3} />
-                    </div>
-                  )}
-                {speaker.predictedNames &&
-                  speaker.predictedNames.length > 0 &&
-                  (speaker.predictedNames[0].name === "analyzing" &&
-                  speaker.predictedNames[0].score === 1 ? (
-                    <div className="flex flex-row items-end text-sm text-muted-foreground mt-2">
-                      <p className="">Analyzing speaker</p>
-                      <PulseLoader color="#9CA3AF" size={3} />
-                    </div>
-                  ) : (
-                    <RadioGroup
-                      className="space-y-4 mt-5"
-                      defaultValue={speaker.predictedNames[0].embeddingId} // Adjust if necessary
-                      onValueChange={(newValue) =>
-                        handlePredictedNameSelection(
-                          speaker.speakerNumber,
-                          speaker.predictedNames, // This might need adjustment
-                          newValue
-                        )
-                      }
-                    >
-                      {groupPredictedNamesAndMaxScores(
-                        speaker.predictedNames
-                      ).map((predictedName, idx) => (
-                        <div key={idx} className="flex items-center space-x-4">
-                          <RadioGroupItem
-                            value={predictedName.name} // Using name as value; ensure it's unique or adjust
-                            id={`speaker-${speaker.speakerNumber}-name-${idx}`} // Adjust ID to use index or another unique identifier
-                          />
-                          <Label
-                            className="flex flex-row items-center space-x-2 cursor-pointer"
-                            htmlFor={`speaker-${speaker.speakerNumber}-name-${idx}`} // Adjust htmlFor to match
+                <div className="relative">
+                  <h4 className="font-medium leading-none mb-3">
+                    Predicted Names
+                  </h4>
+                  <p className="text-sm text-muted-foreground">
+                    AI predictictions based on your previous meetings:
+                  </p>
+                  {speaker.predictedNames &&
+                    speaker.predictedNames.length == 0 && (
+                      <div className="flex flex-row items-end text-sm text-muted-foreground mt-2">
+                        <Badge
+                          variant="outline"
+                          className="absolute -top-1.5 right-0 py-1.5"
+                        >
+                          <p>
+                            {speaker.voiceAnalysisStatus
+                              .charAt(0)
+                              .toUpperCase() +
+                              speaker.voiceAnalysisStatus.slice(1)}
+                          </p>
+                        </Badge>
+                        {/* <PulseLoader color="#9CA3AF" size={3} className="mb-.5" /> */}
+                      </div>
+                    )}
+                  {speaker.predictedNames &&
+                    speaker.predictedNames.length > 0 && (
+                      <div>
+                        <div className="flex flex-row items-end text-sm text-muted-foreground mt-2">
+                          <Badge
+                            variant="outline"
+                            className="absolute -top-1.5 right-0 py-1.5"
                           >
-                            <Badge
-                              className={`mr-1 ${getBadgeColor(
-                                predictedName.maxScore
-                              )}`}
-                            >
-                              {(predictedName.maxScore * 100).toFixed(0)}%
-                            </Badge>
-                            <span>{predictedName.name}</span>
-                          </Label>
+                            <p>
+                              {speaker.voiceAnalysisStatus
+                                .charAt(0)
+                                .toUpperCase() +
+                                speaker.voiceAnalysisStatus.slice(1)}
+                            </p>
+                          </Badge>
+                          {/* <PulseLoader color="#9CA3AF" size={3} className="mb-.5" /> */}
                         </div>
-                      ))}
-                    </RadioGroup>
-                  ))}
+                        <RadioGroup
+                          className="space-y-4 mt-5"
+                          defaultValue={speaker.predictedNames[0].embeddingId} // Adjust if necessary
+                          onValueChange={(newValue) =>
+                            handlePredictedNameSelection(
+                              speaker.speakerNumber,
+                              speaker.predictedNames, // This might need adjustment
+                              newValue
+                            )
+                          }
+                        >
+                          {groupPredictedNamesAndMaxScores(
+                            speaker.predictedNames
+                          ).map((predictedName, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center space-x-4"
+                            >
+                              <RadioGroupItem
+                                value={predictedName.name} // Using name as value; ensure it's unique or adjust
+                                id={`speaker-${speaker.speakerNumber}-name-${idx}`} // Adjust ID to use index or another unique identifier
+                              />
+                              <Label
+                                className="flex flex-row items-center space-x-2 cursor-pointer"
+                                htmlFor={`speaker-${speaker.speakerNumber}-name-${idx}`} // Adjust htmlFor to match
+                              >
+                                <Badge
+                                  className={`mr-1 ${getBadgeColor(
+                                    predictedName.maxScore
+                                  )}`}
+                                >
+                                  {(predictedName.maxScore * 100).toFixed(0)}%
+                                </Badge>
+                                <span>{predictedName.name}</span>
+                              </Label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+                    )}
+                </div>
               </PopoverContent>
             </Popover>
           </div>
@@ -316,13 +400,11 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                   </div>
                   <div>
                     {sentence.transcript}{" "}
-                    {index === finalizedSentences.length - 1 && (
-                      <div>
-                        {caption && !caption.isFinal && (
-                          <div className="text-blue-500">{caption.words}</div>
-                        )}
-                      </div>
-                    )}
+                    {index === finalizedSentences.length - 1 &&
+                      caption &&
+                      !caption.isFinal && (
+                        <span className="text-blue-500">{caption.words}</span>
+                      )}
                   </div>
                 </div>
               </div>

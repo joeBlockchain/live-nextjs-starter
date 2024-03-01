@@ -23,9 +23,11 @@ interface Speaker {
   meetingID: string;
   predictedNames?: PredictedName[];
   speakerNumber: number;
+  voiceAnalysisStatus?: "analyzing" | "completed" | "pending" | "failed";
 }
 
 interface PredictedName {
+  userSelected: boolean;
   name: string;
   score: number;
   speakerId?: string;
@@ -45,14 +47,12 @@ export const storeFinalizedSentence = mutation({
   args: {
     meetingID: v.id("meetings"),
     speaker: v.number(),
+    // speakerId: v.id("speakers"),
     transcript: v.string(),
     start: v.float64(),
     end: v.float64(),
   },
-  async handler(
-    { db, auth, scheduler },
-    { meetingID, speaker, transcript, start, end }
-  ) {
+  async handler({ db, auth }, { meetingID, speaker, transcript, start, end }) {
     const user = await auth.getUserIdentity();
     if (!user) {
       throw new Error("User not authenticated");
@@ -65,6 +65,7 @@ export const storeFinalizedSentence = mutation({
       meetingID,
       userId: user.subject,
       speaker,
+      // speakerId,
       transcript,
       start,
       end,
@@ -400,11 +401,15 @@ export const generateAudioFileUrl = query({
   },
 });
 
+//Need to update this to sepnd predicted speakers to speakers table right now client does it on name change
 export const getNearestMatchingSpeakers = action({
   args: {
-    storageId: v.id("_storage"), // The ID of the uploaded file in Convex storage
+    storageId: v.id("_storage"),
+    meetingId: v.id("meetings"),
+    speakerNumber: v.number(),
   },
   handler: async (ctx, args) => {
+    let speakerId;
     try {
       const user = await ctx.auth.getUserIdentity();
 
@@ -413,13 +418,19 @@ export const getNearestMatchingSpeakers = action({
       }
 
       const currentUserID = user.subject;
+      speakerId = await ctx.runQuery(
+        internal.transcript.lookupSpeakerIdBySpeakerNumber,
+        {
+          meetingId: args.meetingId,
+          speakerNumber: args.speakerNumber,
+        }
+      );
 
       //retrieve the audio file from the storage
       const audioUrl = (await ctx.storage.getUrl(args.storageId)) as string;
       // post to runpod to get embedding
       const runpodResponse = await postAudioToRunpod(audioUrl);
-      // store the embedding in the convex database
-
+      // store the embedding in the convex database?  Right now only storing at stop record for whole audio
       // Perform a vector search with the generated embedding
       const results = await ctx.vectorSearch(
         "audioEmbeddings",
@@ -452,11 +463,94 @@ export const getNearestMatchingSpeakers = action({
             return { ...details, score: result._score, speaker };
           })
         );
+
+      let allPredictedMatches: PredictedName[] = [];
+
+      // Loop through resultsWithDetails to collect all predicted matches
+      for (const detail of resultsWithDetails) {
+        const matches = detail.speaker.map((speakerDetail) => ({
+          userSelected: false, // Assuming you want to default to false
+          name: speakerDetail.firstName, // Assuming you want to use firstName as the name
+          score: detail.score,
+          speakerId: speakerDetail._id, // This seems redundant since you're already updating this speaker, but included for completeness
+          embeddingId: detail.embeddingId,
+        }));
+
+        // Add the matches from this iteration to the allPredictedMatches array
+        allPredictedMatches = allPredictedMatches.concat(matches);
+      }
+
+      // Now, outside the loop, update the database with all collected predicted matches
+      await ctx.runMutation(internal.transcript.updatePredictedMatches, {
+        speakerId: speakerId!, // Ensure speakerId is defined and valid
+        predictedMatches: allPredictedMatches as PredictedName[],
+        voiceAnalysisStatus: "completed", // Assuming you want to update the status to "completed"
+      });
+
       return resultsWithDetails;
       // return results;
     } catch (error) {
       console.error("Failed to getNearestMatchingSpeakers:", error);
+      // If the process fails, update the status to "failed"
+      if (speakerId) {
+        await ctx.runMutation(internal.transcript.updatePredictedMatches, {
+          speakerId: speakerId,
+          predictedMatches: [], // Assuming no matches to update if the process failed
+          voiceAnalysisStatus: "failed",
+        });
+      }
     }
+  },
+});
+
+//this is only needed because we dont have speakerid in finalizedsentnces in the client as they are created
+export const lookupSpeakerIdBySpeakerNumber = internalQuery({
+  args: {
+    meetingId: v.id("meetings"),
+    speakerNumber: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const speakerDoc = await ctx.db
+      .query("speakers")
+      .withIndex("by_meetingID", (q) => q.eq("meetingID", args.meetingId))
+      .filter((q) => q.eq(q.field("speakerNumber"), args.speakerNumber))
+      .unique();
+    if (speakerDoc === null) {
+      return null;
+    }
+    return speakerDoc._id;
+  },
+});
+
+//update speaker table with predicted names
+export const updatePredictedMatches = internalMutation({
+  args: {
+    speakerId: v.id("speakers"),
+    predictedMatches: v.optional(
+      v.array(
+        v.object({
+          userSelected: v.boolean(),
+          name: v.string(),
+          score: v.float64(),
+          speakerId: v.optional(v.string()),
+          embeddingId: v.optional(v.string()),
+        })
+      )
+    ),
+    voiceAnalysisStatus: v.union(
+      v.literal("analyzing"),
+      v.literal("completed"),
+      v.literal("pending"),
+      v.literal("failed")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const { speakerId, predictedMatches } = args;
+    // Use patch method to update existing document
+    await ctx.db.patch(speakerId, {
+      predictedNames: predictedMatches,
+      voiceAnalysisStatus: args.voiceAnalysisStatus,
+    });
   },
 });
 
