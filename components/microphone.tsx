@@ -336,24 +336,24 @@ export default function Microphone({
   useEffect(() => {
     async function fetchData() {
       try {
-        // const data = await fetchFinalizedSentences(meetingID);
-        // // console.log("Finalized Sentences from DB:", data);
-        // // Here you can set the state with the fetched data
-        // prevFinalizedSentencesLengthRef.current = data.length;
-        // setFinalizedSentences(data); // Assuming you have a state setter for finalized sentences
-        // // Map over the fetched finalized sentences to prepare storedSentences
-        // const storedSentencesData = data.map((sentence: FinalizedSentence) => ({
-        //   //@ts-ignore
-        //   id: sentence._id, // Assuming each sentence has an id field
-        //   // Add any other fields from FinalizedSentence that should be in StoredSentence
-        // }));
-        // setStoredSentences(storedSentencesData);
+        const data = await fetchFinalizedSentences(meetingID);
+        // console.log("Finalized Sentences from DB:", data);
+        // Here you can set the state with the fetched data
+        prevFinalizedSentencesLengthRef.current = data.length;
+        setFinalizedSentences(data); // Assuming you have a state setter for finalized sentences
+        // Map over the fetched finalized sentences to prepare storedSentences
+        const storedSentencesData = data.map((sentence: FinalizedSentence) => ({
+          //@ts-ignore
+          id: sentence._id, // Assuming each sentence has an id field
+          // Add any other fields from FinalizedSentence that should be in StoredSentence
+        }));
+        setStoredSentences(storedSentencesData);
       } catch (error) {
         console.error("Failed to fetch finalized sentences:", error);
       }
     }
 
-    fetchData();
+    // fetchData();
   }, [meetingID, setFinalizedSentences]);
 
   async function fetchFinalizedSentences(meetingID: Id<"meetings">) {
