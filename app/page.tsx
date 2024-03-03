@@ -65,11 +65,12 @@ export default function Home() {
             className="border border-foreground rounded-md p-2 ml-4"
           /> */}
         </div>
+
         <div className="flex flex-col justify-center items-center">
-          <h1 className="mt-8 font-extrabold text-4xl sm:text-5xl lg:text-6xl tracking-tight text-center">
+          <h1 className="mt-8 font-extrabold text-5xl lg:text-6xl tracking-tight text-center">
             Anyone taking notes?
           </h1>
-          <p className="mt-6 text-lg text-center max-w-3xl">
+          <p className="mt-6 text-lg text-center max-w-3xl p-5 lg:p-0">
             Hi, I am just your friendly{" "}
             <code className="font-mono font-medium text-blue-500 dark:text-blue-400">
               Speech to Text, Audio Embedding, Diarization, Generative AI{" "}
@@ -104,7 +105,7 @@ export default function Home() {
             </div>
           </SignedOut>
         </div>
-        <div className="my-40 p-2 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-border w-7xl mx-auto">
+        <div className="my-40 p-2 bg-gray-100 dark:bg-gray-800 rounded-2xl border border-border w-7xl mx-4 lg:mx-auto">
           <Image
             src={lightMockup}
             alt="Screenshot of SaaS Application"

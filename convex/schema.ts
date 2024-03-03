@@ -12,7 +12,9 @@ export default defineSchema({
     transcript: v.string(),
     sentenceEmbeddingId: v.optional(v.id("sentenceEmbeddings")),
     wordCount: v.optional(v.number()),
-  }).index("by_meetingID", ["meetingID"]),
+  })
+    .index("by_meetingID", ["meetingID"])
+    .index("by_speakerId", ["speakerId"]),
   meetings: defineTable({
     title: v.string(),
     userId: v.string(),

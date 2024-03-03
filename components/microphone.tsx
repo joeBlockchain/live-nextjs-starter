@@ -112,6 +112,9 @@ export interface QuestionDetail {
 interface MicrophoneProps {
   meetingID: Id<"meetings">;
   language: string;
+  micOpen: boolean;
+  setMicOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  continuousSpeakerPredictionEnabled: boolean;
   finalizedSentences: FinalizedSentence[];
   setFinalizedSentences: React.Dispatch<
     React.SetStateAction<FinalizedSentence[]>
@@ -133,6 +136,9 @@ interface MicrophoneProps {
 export default function Microphone({
   meetingID,
   language,
+  micOpen,
+  setMicOpen,
+  continuousSpeakerPredictionEnabled,
   finalizedSentences,
   setFinalizedSentences,
   storedSentences, // Add this
@@ -157,7 +163,7 @@ export default function Microphone({
   const [isLoadingKey, setLoadingKey] = useState(true);
   const [isLoading, setLoading] = useState(true);
   const [isProcessing, setProcessing] = useState(false);
-  const [micOpen, setMicOpen] = useState(false);
+  // const [micOpen, setMicOpen] = useState(false);
   const [microphone, setMicrophone] = useState<MediaRecorder | null>();
   const [userMedia, setUserMedia] = useState<MediaStream | null>();
   const [audioBlobs, setAudioBlobs] = useState<Blob[]>([]);
@@ -318,36 +324,6 @@ export default function Microphone({
     [speakerDetails, meetingID, setSpeakerDetails]
   );
 
-  const handleFirstNameChange = (id: number, newFirstName: string) => {
-    setSpeakerDetails((prevSpeakers) =>
-      prevSpeakers.map((speaker) =>
-        speaker.speakerNumber === id
-          ? { ...speaker, firstName: newFirstName }
-          : speaker
-      )
-    );
-  };
-
-  const handleLastNameChange = (id: number, newLastName: string) => {
-    setSpeakerDetails((prevSpeakers) =>
-      prevSpeakers.map((speaker) =>
-        speaker.speakerNumber === id
-          ? { ...speaker, lastName: newLastName }
-          : speaker
-      )
-    );
-  };
-
-  //this helper function handles the mapping of the speaker number in the sentences to the speaker names in the speaker table
-  const getSpeakerName = (speakerNumber: number) => {
-    const speaker = speakerDetails.find(
-      (s) => s.speakerNumber === speakerNumber
-    );
-    return speaker
-      ? `${speaker.firstName} ${speaker.lastName}`.trim()
-      : `Speaker ${speakerNumber}`;
-  };
-
   const createAndSaveEmbedding = useAction(
     api.generateEmbeddings.createEmbeddingsforFinalizedSentencesInMeetingID
   );
@@ -454,6 +430,7 @@ export default function Microphone({
 
   const toggleMicrophone = useCallback(async () => {
     if (microphone && userMedia) {
+      setListening(false);
       setUserMedia(null);
       setMicrophone(null);
 
@@ -509,9 +486,15 @@ export default function Microphone({
       if (finalizedSentences.length > 0) {
         const lastSentence = finalizedSentences[finalizedSentences.length - 1];
 
+        //step 0 get speakerid from speakerdetails
+        const speakerId = speakerDetails.find(
+          (detail) => detail.speakerNumber === lastSentence.speaker
+        )?._id as Id<"speakers">;
+
         const sentenceID = await storeFinalizedSentence({
           meetingID: meetingID,
           speaker: lastSentence.speaker,
+          speakerId: speakerId,
           transcript: lastSentence.transcript,
           start: lastSentence.start,
           end: lastSentence.end,
@@ -606,7 +589,9 @@ export default function Microphone({
       // console.log("response from /api/embedding:", response);
 
       // Reset or handle state updates as necessary
+
       setAudioBlobs([]);
+      setCaption(null); // Reset caption here
     } else {
       if (disableRecording) {
         toast("Were working on it", {
@@ -868,6 +853,35 @@ export default function Microphone({
     processQueue();
   }, [connection, queue, remove, first, size, isProcessing, isListening]);
 
+  // Helper function to determine if a speaker change is valid
+  function isSpeakerChangeValid(
+    previousWordDetail: WordDetail,
+    currentWordDetail: WordDetail
+  ): boolean {
+    const validEndings = [".", "?", "!"];
+    const isPreviousWordEndingValid = validEndings.some((ending) =>
+      previousWordDetail.punctuated_word.trim().endsWith(ending)
+    );
+    const isCurrentWordStartingCapitalized =
+      currentWordDetail.punctuated_word.trim().charAt(0) ===
+      currentWordDetail.punctuated_word.trim().charAt(0).toUpperCase();
+
+    // Both conditions must be true for a speaker change to be valid
+    if (isPreviousWordEndingValid && isCurrentWordStartingCapitalized) {
+      // console.log("Speaker change accepted", {
+      //   previousWordDetail,
+      //   currentWordDetail,
+      // });
+      return true;
+    } else {
+      // console.log("Speaker change rejected", {
+      //   previousWordDetail,
+      //   currentWordDetail,
+      // });
+      return false;
+    }
+  }
+
   // Function to process final captions and construct finalized sentences
   const processFinalCaptions = useCallback(
     async (finalCaptions: WordDetail[]) => {
@@ -877,71 +891,74 @@ export default function Microphone({
       let startTime = finalCaptions[0]?.start;
       let endTime = finalCaptions[0]?.end;
 
-      // Track if we have already handled the current speaker
       let handledSpeakers: number[] = [];
+      let currentSentence = "";
+      const detectedQuestions: QuestionDetail[] = [];
 
-      // New logic for capturing full questions
-      let currentSentence = ""; // Track the current sentence being formed
-      const detectedQuestions: QuestionDetail[] = []; // Array to hold detected questions
-
-      for (const wordDetail of finalCaptions) {
-        // Append the current word to the sentence being formed
+      for (let i = 0; i < finalCaptions.length; i++) {
+        const wordDetail = finalCaptions[i];
         currentSentence += wordDetail.punctuated_word + " ";
 
-        // Check if the current word ends with a question mark
         if (wordDetail.punctuated_word.endsWith("?")) {
-          // If so, capture the entire current sentence as a question
-
           const currentQuestion: QuestionDetail = {
             question: currentSentence.trim(),
             timestamp: startTime,
             speaker: currentSpeaker,
             meetingID: meetingID,
           };
-
           detectedQuestions.push(currentQuestion);
-          // Reset currentSentence for the next sentence
           currentSentence = "";
         }
 
+        const isLastWord = i === finalCaptions.length - 1;
+        const nextWordDetail = isLastWord ? null : finalCaptions[i + 1];
+
         if (
-          wordDetail.speaker !== currentSpeaker ||
-          wordDetail === finalCaptions[finalCaptions.length - 1]
+          isLastWord ||
+          (nextWordDetail && wordDetail.speaker !== nextWordDetail.speaker)
         ) {
-          if (wordDetail === finalCaptions[finalCaptions.length - 1]) {
+          if (
+            !isLastWord &&
+            nextWordDetail &&
+            !isSpeakerChangeValid(wordDetail, nextWordDetail)
+          ) {
+            // Ensure nextWordDetail is not null before accessing its properties
+            nextWordDetail.speaker = wordDetail.speaker; // Adjust the speaker for the next word
+          } else {
             currentText += wordDetail.punctuated_word + " ";
             endTime = wordDetail.end;
+
+            if (!handledSpeakers.includes(currentSpeaker)) {
+              handleNewSpeaker(currentSpeaker);
+              handledSpeakers.push(currentSpeaker);
+            }
+
+            sentences.push({
+              speaker: currentSpeaker,
+              transcript: currentText.trim(),
+              start: startTime,
+              end: endTime,
+              meetingID: meetingID,
+            });
+
+            if (!isLastWord && nextWordDetail) {
+              // Ensure nextWordDetail is not null before accessing its properties
+              currentSpeaker = nextWordDetail.speaker;
+              currentText = nextWordDetail.punctuated_word + " ";
+              startTime = nextWordDetail.start;
+              endTime = nextWordDetail.end;
+              i++; // Skip the next word as it has already been processed
+            }
           }
-
-          // If we haven't handled this speaker yet, do so now
-          if (!handledSpeakers.includes(currentSpeaker)) {
-            handleNewSpeaker(currentSpeaker);
-            handledSpeakers.push(currentSpeaker);
-          }
-
-          sentences.push({
-            speaker: currentSpeaker,
-            transcript: currentText.trim(),
-            start: startTime,
-            end: endTime,
-            meetingID: meetingID,
-          });
-
-          currentSpeaker = wordDetail.speaker;
-          currentText = wordDetail.punctuated_word + " ";
-          startTime = wordDetail.start;
-          endTime = wordDetail.end;
         } else {
           currentText += wordDetail.punctuated_word + " ";
           endTime = wordDetail.end;
         }
       }
-      // console.log("Finalized Sentences:", sentences);
-      // console.log("Detected Questions:", detectedQuestions); // Log detected questions
       setFinalizedSentences(sentences);
       setQuestions(detectedQuestions);
     },
-    [meetingID, handleNewSpeaker, setFinalizedSentences]
+    [meetingID, handleNewSpeaker, setFinalizedSentences] // Specify dependencies as needed
   );
 
   const processedSpeakersRef = useRef<Set<number>>(new Set());
@@ -954,18 +971,12 @@ export default function Microphone({
         const lastSentence = finalizedSentences[finalizedSentences.length - 1];
         // Calculate the duration of the last sentence
         const sentenceDuration = lastSentence.end - lastSentence.start;
-
         // Check if the duration is greater than 5 seconds and the speaker hasn't been processed yet
         if (
           sentenceDuration > 5 &&
           !processedSpeakersRef.current.has(lastSentence.speaker)
         ) {
-          // Call updateSpeakerPredictedNames with the last sentence and audioBlobs
-          updateSpeakerPredictedNames(lastSentence, audioBlobs).catch(
-            console.error
-          );
-
-          // update chanceSpeakerDetailsByID with status "analyzing"
+          // update changeSpeakerDetailsByID with status "analyzing"
           // Find the speaker detail by speaker number
           const speakerDetail = speakerDetails.find(
             (detail) => detail.speakerNumber === lastSentence.speaker
@@ -981,6 +992,11 @@ export default function Microphone({
               predictedNames: speakerDetail.predictedNames,
             });
 
+            // Call updateSpeakerPredictedNames with the last sentence and audioBlobs
+            updateSpeakerPredictedNames(lastSentence, audioBlobs).catch(
+              console.error
+            );
+
             // Mark the speaker as processed by adding their number to the set
             processedSpeakersRef.current.add(lastSentence.speaker);
           }
@@ -993,6 +1009,8 @@ export default function Microphone({
     lastSentence: FinalizedSentence,
     audioBlobs: Blob[]
   ) => {
+    console.log("updateSpeakerPredictedNames called");
+
     try {
       const sectionAudioBlob = generateAudioBlobForSentence(
         lastSentence,
@@ -1010,6 +1028,7 @@ export default function Microphone({
     }
   };
 
+  // store finalizedsentences to the db as they are added
   useEffect(() => {
     //only run if we are adding to the length of finalizedsentencse not if we are removing from it (ie: deleting)
     if (finalizedSentences.length > prevFinalizedSentencesLengthRef.current) {
@@ -1021,14 +1040,52 @@ export default function Microphone({
           // if greater than 2 then we have our first complete sentence from our first speaker
           const lastSentenceIndex = currentLength - 2;
           const lastSentence = finalizedSentences[lastSentenceIndex];
+
+          //step 0 get speakerid from speakerdetails
+          const speakerId = speakerDetails.find(
+            (detail) => detail.speakerNumber === lastSentence.speaker
+          )?._id as Id<"speakers">;
+
           //step 1
           const sentenceID = await storeFinalizedSentence({
             meetingID: meetingID,
             speaker: lastSentence.speaker,
+            speakerId: speakerId,
             transcript: lastSentence.transcript,
             start: lastSentence.start,
             end: lastSentence.end,
           });
+
+          // if the last sentecne was less than 5 seconds we need to call speakermatch since it wouldnt have been triggered
+          // need atleast more than 2 seconds or audio embedding will fail
+          if (lastSentence.end > 2 && lastSentence.end < 5) {
+            updateSpeakerPredictedNames(lastSentence, audioBlobs);
+          }
+
+          //if continuousspeakerprediction enabled then we need to call the speaker prediction function
+          if (lastSentence.end > 2 && continuousSpeakerPredictionEnabled) {
+            console.log("continuous enabled: ", lastSentence);
+
+            const speakerDetail = speakerDetails.find(
+              (detail) => detail.speakerNumber === lastSentence.speaker
+            );
+
+            if (speakerDetail) {
+              const result = changeSpeakerDetailsByID({
+                speakerId: speakerDetail._id as Id<"speakers">,
+                speakerNumber: speakerDetail.speakerNumber,
+                firstName: speakerDetail.firstName,
+                lastName: speakerDetail.lastName,
+                voiceAnalysisStatus: "analyzing",
+                predictedNames: speakerDetail.predictedNames,
+              });
+
+              // Call updateSpeakerPredictedNames with the last sentence and audioBlobs
+              updateSpeakerPredictedNames(lastSentence, audioBlobs).catch(
+                console.error
+              );
+            }
+          }
 
           // When updating storedSentences, ensure all properties match the StoredSentence interface
           if (sentenceID) {

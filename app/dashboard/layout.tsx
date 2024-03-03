@@ -1,3 +1,5 @@
+"use client";
+
 import React, { ReactNode } from "react"; // Corrected import
 import { useConvexAuth } from "convex/react"; // your auth hook
 

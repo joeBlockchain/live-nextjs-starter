@@ -64,19 +64,6 @@ const DashboardPage: NextPage = () => {
 
   const [users, setUsers] = useState<ClerkUser[]>([]);
 
-  const addUserIdToEmbeddings = useAction(
-    api.cleanUpFunctions.addUserIdToSentenceEmbeddings
-  );
-
-  const handleClick = async () => {
-    try {
-      const response = await addUserIdToEmbeddings();
-      //   console.log(response); // log updated embeddings for debugging
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   useEffect(() => {
     const fetchUsers = async () => {
       const response = await fetch("/api/users");
@@ -104,7 +91,6 @@ const DashboardPage: NextPage = () => {
 
   return (
     <div className="p-8 space-y-8">
-      <Button onClick={handleClick}>Add Userids to Sentence Embeddings</Button>
       <h1 className="text-2xl font-bold mb-8">Admin Dashboard</h1>
       <div className="grid gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
         <Card>
