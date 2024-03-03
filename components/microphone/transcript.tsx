@@ -1,10 +1,17 @@
 //inport react stuff
-import React, { Dispatch, SetStateAction, useState } from "react";
+import React, {
+  Dispatch,
+  SetStateAction,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 
 //import convex stuff
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { usePaginatedQuery } from "convex/react";
 
 //import shadcnui stuff
 import { Button } from "@/components/ui/button";
@@ -37,15 +44,20 @@ interface CaptionDetail {
 }
 
 interface TranscriptDisplayProps {
+  meetingId: Id<"meetings">;
+  micOpen: boolean;
   speakerDetails: SpeakerDetail[];
   setSpeakerDetails: Dispatch<SetStateAction<SpeakerDetail[]>>;
   finalizedSentences: FinalizedSentence[];
   caption: CaptionDetail | null;
   setCaption?: Dispatch<SetStateAction<CaptionDetail | null>>; // Make it optional if it's not always needed
   removeFinalizedSentence: (index: number) => void;
+  // Assuming meetingID is required
 }
 
 const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
+  meetingId,
+  micOpen,
   speakerDetails,
   setSpeakerDetails,
   finalizedSentences,
@@ -55,6 +67,20 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
   const changeSpeakerDetailsByID = useMutation(
     api.meetings.changeSpeakerDetailsByID
   );
+
+  const deleteFinalizedSentenceByIdKeep = useMutation(
+    api.transcript.deleteFinalizedSentence
+  );
+
+  const handleDeleteFinalizedSentence = async (id: string) => {
+    try {
+      await deleteFinalizedSentenceByIdKeep({
+        sentenceId: id as Id<"finalizedSentences">,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const handleFirstNameChange = (id: number, newFirstName: string) => {
     setSpeakerDetails((prevSpeakers) =>
@@ -191,6 +217,34 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
       return "bg-red-500 dark:bg-red-600 dark:text-red-200 hover:bg-red-600 dark:hover:bg-red-700";
     }
   };
+
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.transcript.getFinalizedSentencesByMeetingPagination,
+    { meetingID: meetingId },
+    { initialNumItems: 5 }
+  );
+
+  const loader = useRef(null);
+
+  useEffect(() => {
+    if (status !== "CanLoadMore") return;
+
+    const observer = new IntersectionObserver(handleObserver, { threshold: 1 });
+    if (loader.current) {
+      observer.observe(loader.current);
+    }
+
+    function handleObserver(entities: any) {
+      const target = entities[0];
+      if (target.isIntersecting) {
+        loadMore(5);
+      }
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [status, loadMore]);
 
   return (
     <div className="flex flex-col">
@@ -369,12 +423,13 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
           </div>
         ))}
       </div>
-      <ScrollArea className="h-[calc(100vh-260px)] md:h-[calc(100vh-305px)]">
-        {/* Display is_final responses */}
-        {(finalizedSentences.length > 0 || caption) && (
-          <div className="mt-5 my-4 space-y-4">
-            {finalizedSentences.map((sentence, index) => (
-              <div key={index} className="flex flex-row">
+      <ScrollArea className="mt-4 h-[calc(100vh-260px)] md:h-[calc(100vh-305px)]">
+        <div className="flex flex-col space-y-4">
+          {results?.map(
+            (
+              result // Keep the full result object here
+            ) => (
+              <div key={result._id} className="flex flex-row">
                 <Avatar className="">
                   <AvatarImage src="" />
                   <AvatarFallback>
@@ -384,31 +439,91 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                 <div className="relative flex flex-col ml-4 border rounded-lg p-4 group">
                   <div className="flex flex-row justify-between mb-3">
                     <div className="absolute -top-6 right-2 opacity-0 group-hover:opacity-100 text-sm text-muted-foreground">
-                      {sentence.start.toFixed(2)} - {sentence.end.toFixed(2)}
+                      {result.start.toFixed(2)} - {result.end.toFixed(2)}{" "}
+                      {/* Access properties directly */}
                     </div>
                     <div className="font-bold mr-8">
-                      {getSpeakerName(sentence.speaker)}
+                      {getSpeakerName(result.speaker)}
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="-m-3 text-muted-foreground opacity-0 group-hover:opacity-100"
-                      onClick={() => removeFinalizedSentence(index)}
+                      onClick={() => handleDeleteFinalizedSentence(result._id)} // Pass the full result object here
+                    >
+                      <X size={16} />
+                    </Button>
+                  </div>
+                  <div>{result.transcript} </div>{" "}
+                  {/* Access properties directly */}
+                </div>
+              </div>
+            )
+          )}
+          <div ref={loader} className="text-center">
+            {/* {status === "Exhausted" ? (
+              <Badge variant="outline" className="text-muted-foreground p-2">
+                End of Transcript
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted-foreground p-2">
+                Loading More
+              </Badge>
+            )} */}
+          </div>
+        </div>
+        {/* Display is_final responses */}
+        {/* Display is_final responses */}
+        {micOpen && (finalizedSentences.length > 0 || caption) && (
+          <div className="space-y-4">
+            {finalizedSentences.length > 0 && (
+              <div className="flex flex-row">
+                <Avatar className="">
+                  <AvatarImage src="" />
+                  <AvatarFallback>
+                    <User />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="relative flex flex-col ml-4 border rounded-lg p-4 group">
+                  <div className="flex flex-row justify-between mb-3">
+                    <div className="absolute -top-6 right-2 opacity-0 group-hover:opacity-100 text-sm text-muted-foreground">
+                      {finalizedSentences[
+                        finalizedSentences.length - 1
+                      ].start.toFixed(2)}{" "}
+                      -{" "}
+                      {finalizedSentences[
+                        finalizedSentences.length - 1
+                      ].end.toFixed(2)}
+                    </div>
+                    <div className="font-bold mr-8">
+                      {getSpeakerName(
+                        finalizedSentences[finalizedSentences.length - 1]
+                          .speaker
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-m-3 text-muted-foreground opacity-0 group-hover:opacity-100"
+                      onClick={() =>
+                        removeFinalizedSentence(finalizedSentences.length - 1)
+                      }
                     >
                       <X size={16} />
                     </Button>
                   </div>
                   <div>
-                    {sentence.transcript}{" "}
-                    {index === finalizedSentences.length - 1 &&
-                      caption &&
-                      !caption.isFinal && (
-                        <span className="text-blue-500">{caption.words}</span>
-                      )}
+                    {
+                      finalizedSentences[finalizedSentences.length - 1]
+                        .transcript
+                    }{" "}
+                    {caption && !caption.isFinal && (
+                      <span className="text-blue-500">{caption.words}</span>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+            )}
             {caption && finalizedSentences.length === 0 && (
               <div className="flex flex-row">
                 <Avatar className="">

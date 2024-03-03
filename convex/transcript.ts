@@ -7,6 +7,7 @@ import {
   internalAction,
   internalQuery,
 } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 
@@ -47,12 +48,15 @@ export const storeFinalizedSentence = mutation({
   args: {
     meetingID: v.id("meetings"),
     speaker: v.number(),
-    // speakerId: v.id("speakers"),
+    speakerId: v.id("speakers"),
     transcript: v.string(),
     start: v.float64(),
     end: v.float64(),
   },
-  async handler({ db, auth }, { meetingID, speaker, transcript, start, end }) {
+  async handler(
+    { db, auth },
+    { meetingID, speaker, speakerId, transcript, start, end }
+  ) {
     const user = await auth.getUserIdentity();
     if (!user) {
       throw new Error("User not authenticated");
@@ -65,7 +69,7 @@ export const storeFinalizedSentence = mutation({
       meetingID,
       userId: user.subject,
       speaker,
-      // speakerId,
+      speakerId,
       transcript,
       start,
       end,
@@ -297,16 +301,72 @@ export const getFinalizedSentencesByMeeting = query({
   },
 });
 
+export const getFinalizedSentencesByMeetingPagination = query({
+  args: {
+    meetingID: v.id("meetings"),
+    paginationOpts: paginationOptsValidator, // pagination options
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error(
+        "Please login to retrieve finalized sentences for a meeting"
+      );
+    }
+
+    const result = await ctx.db
+      .query("finalizedSentences")
+      .filter((q) => q.eq(q.field("meetingID"), args.meetingID))
+      .paginate(args.paginationOpts); // paginated query
+
+    return result;
+  },
+});
+
+// export const deleteFinalizedSentence = mutation({
+//   args: {
+//     sentenceId: v.id("finalizedSentences"), // Assuming "finalizedSentences" is the collection name
+//   },
+//   async handler({ db, auth }, { sentenceId }) {
+//     const user = await auth.getUserIdentity();
+//     if (!user) {
+//       throw new Error("User not authenticated");
+//     }
+//     await db.delete(sentenceId); // Delete the sentence by its ID
+//   },
+// });
+
 export const deleteFinalizedSentence = mutation({
   args: {
-    sentenceId: v.id("finalizedSentences"), // Assuming "finalizedSentences" is the collection name
+    sentenceId: v.id("finalizedSentences"),
   },
   async handler({ db, auth }, { sentenceId }) {
     const user = await auth.getUserIdentity();
     if (!user) {
       throw new Error("User not authenticated");
     }
-    await db.delete(sentenceId); // Delete the sentence by its ID
+
+    // Get the sentence before deletion to have access to its speakerId & meetingID
+    const sentence = await db.get(sentenceId);
+
+    const sentencesLeft = await db
+      .query("finalizedSentences")
+      .filter(
+        (q) =>
+          q.eq(q.field("speakerId"), sentence?.speakerId) &&
+          q.eq(q.field("meetingID"), sentence?.meetingID)
+      )
+      .collect();
+
+    //delete speaker if only 1 sentence left because after we delete this
+    //sentence there will be 0 left
+    if (sentencesLeft.length === 1) {
+      await db.delete(sentence?.speakerId as Id<"speakers">);
+    }
+
+    // Delete the sentence
+    await db.delete(sentenceId);
   },
 });
 
@@ -418,29 +478,49 @@ export const getNearestMatchingSpeakers = action({
       }
 
       const currentUserID = user.subject;
-      speakerId = await ctx.runQuery(
-        internal.transcript.lookupSpeakerIdBySpeakerNumber,
-        {
-          meetingId: args.meetingId,
-          speakerNumber: args.speakerNumber,
-        }
-      );
+
+      try {
+        speakerId = await ctx.runQuery(
+          internal.transcript.lookupSpeakerIdBySpeakerNumber,
+          {
+            meetingId: args.meetingId,
+            speakerNumber: args.speakerNumber,
+          }
+        );
+      } catch (error) {
+        console.error("Error looking up speaker ID:", error);
+        throw new Error("Failed to look up speaker ID.");
+      }
 
       //retrieve the audio file from the storage
-      const audioUrl = (await ctx.storage.getUrl(args.storageId)) as string;
+      let audioUrl;
+      try {
+        audioUrl = (await ctx.storage.getUrl(args.storageId)) as string;
+      } catch (error) {
+        console.error("Error retrieving audio URL:", error);
+        throw new Error("Failed to retrieve audio URL.");
+      }
       // post to runpod to get embedding
-      const runpodResponse = await postAudioToRunpod(audioUrl);
-      // store the embedding in the convex database?  Right now only storing at stop record for whole audio
+      let runpodResponse;
+      try {
+        runpodResponse = await postAudioToRunpod(audioUrl);
+      } catch (error) {
+        console.error("Error posting audio to Runpod:", error);
+        throw new Error("Failed to post audio to Runpod.");
+      }
+
       // Perform a vector search with the generated embedding
-      const results = await ctx.vectorSearch(
-        "audioEmbeddings",
-        "embeddingVector",
-        {
+      let results;
+      try {
+        results = await ctx.vectorSearch("audioEmbeddings", "embeddingVector", {
           vector: runpodResponse.output.embedding,
           limit: 20,
           filter: (q) => q.eq("userId", currentUserID),
-        }
-      );
+        });
+      } catch (error) {
+        console.error("Error performing vector search:", error);
+        throw new Error("Failed to perform vector search.");
+      }
 
       // Fetch additional details for each result using the internal query
       //trying to get the ability to select a predicted speaker by the user,
@@ -507,6 +587,7 @@ export const getNearestMatchingSpeakers = action({
       // return results;
     } catch (error) {
       console.error("Failed to getNearestMatchingSpeakers:", error);
+      console.error("args", args);
       // If the process fails, update the status to "failed"
       if (speakerId) {
         await ctx.runMutation(internal.transcript.updatePredictedMatches, {

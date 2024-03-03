@@ -10,10 +10,14 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 
+//import clerk stuff
+import { useUser } from "@clerk/nextjs";
+
 //import convex stuff
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { useConvexAuth } from "convex/react";
 
 //import shadcnui stuff
 import { Separator } from "@/components/ui/separator";
@@ -29,7 +33,13 @@ import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 //import icon stuff
-import { PenLine, CalendarIcon, SparklesIcon, Clock } from "lucide-react";
+import {
+  PenLine,
+  CalendarIcon,
+  SparklesIcon,
+  Clock,
+  MoreHorizontal,
+} from "lucide-react";
 
 // import custom stuff
 import Microphone from "@/components/microphone";
@@ -37,6 +47,7 @@ import TranscriptDisplay from "@/components/microphone/transcript";
 import Chat from "@/components/chat/chat";
 import NoteContainer from "@/components/wysiwyg/noteContainer";
 import { Breadcrumbs, BreadcrumbItem } from "@/components/ui/breadcrumbs";
+import MeetingSettings from "@/components/meetings/settings-meeting";
 
 //import custom stuff
 import { clsx } from "clsx";
@@ -114,6 +125,12 @@ export default function Page({
 }: {
   params: { meetingID: Id<"meetings">; language: string };
 }) {
+  const { user } = useUser();
+  const isPowerUser = user?.publicMetadata?.isPowerUser === "true";
+
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const [micOpen, setMicOpen] = useState(false);
+
   const [date, setDate] = useState<Date>(new Date());
   // Add a new local state for the editable title
   const [editableTitle, setEditableTitle] = useState("");
@@ -248,12 +265,29 @@ export default function Page({
     [finalizedSentences, setFinalizedSentences, setFinalCaptions]
   );
 
+  const [
+    continuousSpeakerPredictionEnabled,
+    setContinuousSpeakerPredictionEnabled,
+  ] = useState(true);
+
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] mx-5">
-      <Breadcrumbs className="mt-2">
-        <BreadcrumbItem href="/mymeetings">All Meetings</BreadcrumbItem>
-        <BreadcrumbItem>{meetingDetails?.[0]?.title}</BreadcrumbItem>
-      </Breadcrumbs>
+      <div className="mt-2 flex flex-row items-center justify-between">
+        <Breadcrumbs className="">
+          <BreadcrumbItem href="/mymeetings">All Meetings</BreadcrumbItem>
+          <BreadcrumbItem>{meetingDetails?.[0]?.title}</BreadcrumbItem>
+        </Breadcrumbs>
+        {isPowerUser && (
+          <MeetingSettings
+            continuousSpeakerPredictionEnabled={
+              continuousSpeakerPredictionEnabled
+            }
+            setContinuousSpeakerPredictionEnabled={
+              setContinuousSpeakerPredictionEnabled
+            }
+          />
+        )}
+      </div>
       <div className="group flex flex-row items-center my-2">
         <Input
           type="text"
@@ -273,6 +307,11 @@ export default function Page({
         <Microphone
           meetingID={params.meetingID}
           language={language}
+          micOpen={micOpen}
+          setMicOpen={setMicOpen}
+          continuousSpeakerPredictionEnabled={
+            continuousSpeakerPredictionEnabled
+          }
           finalizedSentences={finalizedSentences}
           setFinalizedSentences={setFinalizedSentences}
           storedSentences={storedSentences}
@@ -330,13 +369,17 @@ export default function Page({
               <TabsTrigger value="Notes">AI Summary</TabsTrigger>
             </TabsList>
             <TabsContent value="Transcript" className="mt-12">
-              <TranscriptDisplay
-                speakerDetails={speakerDetails}
-                setSpeakerDetails={setSpeakerDetails} // Pass this prop to update the state
-                finalizedSentences={finalizedSentences}
-                caption={caption}
-                removeFinalizedSentence={removeFinalizedSentence} // Passing the function as a prop
-              />
+              <Suspense fallback={<div>Loading...</div>}>
+                <TranscriptDisplay
+                  micOpen={micOpen}
+                  meetingId={params.meetingID}
+                  speakerDetails={speakerDetails}
+                  setSpeakerDetails={setSpeakerDetails} // Pass this prop to update the state
+                  finalizedSentences={finalizedSentences}
+                  caption={caption}
+                  removeFinalizedSentence={removeFinalizedSentence} // Passing the function as a prop
+                />
+              </Suspense>
             </TabsContent>
             <TabsContent value="Notes" className="flex flex-col">
               <Suspense fallback={<div>Loading...</div>}>
@@ -354,13 +397,17 @@ export default function Page({
               selectedTab === "Transcript" ? "md:hidden" : "hidden"
             }`}
           >
-            <TranscriptDisplay
-              speakerDetails={speakerDetails}
-              setSpeakerDetails={setSpeakerDetails} // Pass this prop to update the state
-              finalizedSentences={finalizedSentences}
-              caption={caption}
-              removeFinalizedSentence={removeFinalizedSentence} // Passing the function as a prop
-            />
+            <Suspense fallback={<div>Loading...</div>}>
+              <TranscriptDisplay
+                meetingId={params.meetingID}
+                micOpen={micOpen}
+                speakerDetails={speakerDetails}
+                setSpeakerDetails={setSpeakerDetails} // Pass this prop to update the state
+                finalizedSentences={finalizedSentences}
+                caption={caption}
+                removeFinalizedSentence={removeFinalizedSentence} // Passing the function as a prop
+              />
+            </Suspense>
           </div>
           <div
             className={` ${selectedTab === "Notes" ? "md:hidden" : "hidden"}`}
