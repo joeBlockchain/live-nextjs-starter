@@ -643,11 +643,39 @@ export const updatePredictedMatches = internalMutation({
   },
   handler: async (ctx, args) => {
     const { speakerId, predictedMatches } = args;
-    // Use patch method to update existing document
-    await ctx.db.patch(speakerId, {
-      predictedNames: predictedMatches,
-      voiceAnalysisStatus: args.voiceAnalysisStatus,
-    });
+
+    // Ensure predictedMatches is not undefined and not empty
+    if (predictedMatches && predictedMatches.length > 0) {
+      // Filter matches with a score above 0.6
+      const filteredMatches = predictedMatches.filter(
+        (match) => match.score > 0.6
+      );
+
+      if (filteredMatches.length > 0) {
+        // Find the match with the highest score
+        const highestScoringMatch = filteredMatches.reduce((prev, current) => {
+          return prev.score > current.score ? prev : current;
+        });
+
+        console.log(
+          `Updating name to ${highestScoringMatch.name} with score: ${highestScoringMatch.score}`
+        );
+        await ctx.db.patch(speakerId, {
+          firstName: highestScoringMatch.name,
+          voiceAnalysisStatus: args.voiceAnalysisStatus,
+          predictedNames: [highestScoringMatch],
+        });
+      } else {
+        console.log("No match with score above 0.6");
+        await ctx.db.patch(speakerId, {
+          predictedNames: predictedMatches,
+          voiceAnalysisStatus: args.voiceAnalysisStatus,
+        });
+      }
+    } else {
+      console.log("No predicted matches provided");
+      // Handle the case where no predictedMatches are provided or the array is empty
+    }
   },
 });
 

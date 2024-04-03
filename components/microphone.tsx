@@ -306,19 +306,20 @@ export default function Microphone({
           predictedNames: [],
         });
 
+        //comment out add speaker to local speaker details. we will fetch from db
         // Add new speaker with default names
-        const newSpeaker: SpeakerDetail = {
-          speakerId: speakerId,
-          voiceAnalysisStatus: "pending",
-          speakerNumber,
-          firstName: "",
-          lastName: "",
-          meetingID,
-          predictedNames: [], // Add this line
-        };
+        // const newSpeaker: SpeakerDetail = {
+        //   speakerId: speakerId,
+        //   voiceAnalysisStatus: "pending",
+        //   speakerNumber,
+        //   firstName: "",
+        //   lastName: "",
+        //   meetingID,
+        //   predictedNames: [], // Add this line
+        // };
 
-        // console.log("New Speaker:", newSpeaker);
-        setSpeakerDetails((prevDetails) => [...prevDetails, newSpeaker]);
+        // // console.log("New Speaker:", newSpeaker);
+        // setSpeakerDetails((prevDetails) => [...prevDetails, newSpeaker]);
       }
     },
     [speakerDetails, meetingID, setSpeakerDetails]

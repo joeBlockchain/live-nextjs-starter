@@ -39,6 +39,8 @@ import {
   SparklesIcon,
   Clock,
   MoreHorizontal,
+  Upload,
+  Video,
 } from "lucide-react";
 
 // import custom stuff
@@ -304,6 +306,7 @@ export default function Page({
           className="text-3xl font-bold leading-none border-none focus:ring-0"
         />
         <div className="ml-4" />
+
         <Microphone
           meetingID={params.meetingID}
           language={language}
@@ -326,6 +329,12 @@ export default function Page({
           questions={questions} // Pass the questions state here
           setQuestions={setQuestions} // Pass the setQuestions state here
         />
+        <div>
+          <Button variant="outline" className="ml-4">
+            <Upload className="h-4 w-4 mr-2 " />
+            Import
+          </Button>
+        </div>
       </div>
       <div className="flex justify-end sm:justify-between items-center text-sm md:mt-2 sm:ml-2">
         <div className="hidden sm:flex flex-row items-center">
