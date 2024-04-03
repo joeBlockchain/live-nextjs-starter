@@ -299,91 +299,58 @@ export const updateMeetingDetails = mutation({
 export const deleteMeetingAndRelatedRecords = mutation({
   args: { meetingId: v.id("meetings") },
   handler: async (ctx, { meetingId }) => {
-    // Example for finalizedSentences, repeat for other related collections
-    const finalizedSentences = await ctx.db
-      .query("finalizedSentences")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of finalizedSentences) {
-      await ctx.db.delete(record._id); // Correct usage: delete by _id
+    try {
+      // Example for finalizedSentences, repeat for other related collections
+      const collections = [
+        "finalizedSentences",
+        "messages",
+        "speakers",
+        "meetingSummaries",
+        "wordDetails",
+        "questions",
+        "audioFiles",
+        "sentenceEmbeddings",
+        "audioEmbeddings",
+      ];
+
+      for (const collection of collections) {
+        try {
+          const records = await ctx.db
+            .query(collection as any)
+            .filter((q) => q.eq(q.field("meetingID"), meetingId))
+            .collect();
+
+          for (const record of records) {
+            if (collection === "audioFiles") {
+              // Special handling for audioFiles to delete from storage as well
+              try {
+                await ctx.storage.delete(record.storageId);
+              } catch (error) {
+                console.error(
+                  `Error deleting storage for ${record._id} in collection ${collection}:`,
+                  error
+                );
+              }
+            }
+            await ctx.db.delete(record._id);
+          }
+        } catch (error) {
+          console.error(`Error processing collection ${collection}:`, error);
+        }
+      }
+
+      // Finally, delete the meeting itself
+      try {
+        await ctx.db.delete(meetingId);
+      } catch (error) {
+        console.error(`Error deleting meeting ${meetingId}:`, error);
+      }
+    } catch (error) {
+      console.error(
+        "Unexpected error in deleteMeetingAndRelatedRecords:",
+        error
+      );
     }
-
-    // Correctly delete related records from messages
-    const messages = await ctx.db
-      .query("messages")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of messages) {
-      await ctx.db.delete(record._id);
-    }
-
-    // Correctly delete related records from speakers
-    const speakers = await ctx.db
-      .query("speakers")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of speakers) {
-      await ctx.db.delete(record._id);
-    }
-
-    // Correctly delete related records from meetingSummaries
-    const meetingSummaries = await ctx.db
-      .query("meetingSummaries")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of meetingSummaries) {
-      await ctx.db.delete(record._id);
-    }
-
-    // Delete related wordDetails
-    const wordDetails = await ctx.db
-      .query("wordDetails")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of wordDetails) {
-      await ctx.db.delete(record._id);
-    }
-
-    // Delete related questions
-    const questions = await ctx.db
-      .query("questions")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of questions) {
-      await ctx.db.delete(record._id);
-    }
-
-    // Delete related audioFiles
-    const audioFiles = await ctx.db
-      .query("audioFiles")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of audioFiles) {
-      await ctx.storage.delete(record.storageId);
-      await ctx.db.delete(record._id);
-    }
-
-    // Delete related sentenceEmbeddings
-    const sentenceEmbeddings = await ctx.db
-      .query("sentenceEmbeddings")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-    for (const record of sentenceEmbeddings) {
-      await ctx.db.delete(record._id);
-    }
-
-    //delete related audioembeddings
-    const audioEmbeddings = await ctx.db
-      .query("audioEmbeddings")
-      .filter((q) => q.eq(q.field("meetingID"), meetingId))
-      .collect();
-
-    for (const record of audioEmbeddings) {
-      await ctx.db.delete(record._id);
-    }
-
-    // Finally, delete the meeting itself
-    await ctx.db.delete(meetingId);
   },
 });
 
