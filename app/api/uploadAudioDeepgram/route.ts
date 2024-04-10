@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs";
 import { createClient } from "@deepgram/sdk";
 import { api } from "@/convex/_generated/api";
-import { fetchMutation } from "convex/nextjs";
+import { fetchMutation, fetchAction } from "convex/nextjs";
 import type { Id } from "@/convex/_generated/dataModel";
 
 async function getAuthToken() {
@@ -43,6 +43,8 @@ async function* makeIterator(
   yield encoder.encode(`data: ${JSON.stringify({ status: "Initiating" })}\n\n`);
   await sleep(200);
 
+  const file = formData.get("file") as File;
+
   const meetingIdParam = formData.get("meetingId") as string | null;
   let meetingID: Id<"meetings">;
 
@@ -51,13 +53,11 @@ async function* makeIterator(
   } else {
     const meetingResponse = await fetchMutation(
       api.meetings.createMeeting,
-      { title: "Untitled Meeting" },
+      { title: file.name },
       { token }
     );
     meetingID = meetingResponse.meetingId;
   }
-
-  const file = formData.get("file") as File;
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Uploading" })}\n\n`);
   await sleep(200);
@@ -154,6 +154,45 @@ async function* makeIterator(
       currentSpeaker = word.speaker;
     }
   }
+
+  yield encoder.encode(
+    `data: ${JSON.stringify({ status: "Generate embeddings" })}\n\n`
+  );
+  await sleep(200);
+
+  await fetchAction(
+    api.generateEmbeddings.createEmbeddingsforFinalizedSentencesInMeetingID,
+    { meetingId: meetingID },
+    { token }
+  );
+
+  yield encoder.encode(`data: ${JSON.stringify({ status: "Save audio" })}\n\n`);
+  await sleep(200);
+
+  const uploadUrl = await fetchMutation(
+    api.transcript.generateAudioUploadUrl,
+    {},
+    { token }
+  );
+
+  const uploadResponse = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": "audio/webm" },
+    body: buffer,
+  });
+  if (!uploadResponse.ok) {
+    throw new Error("Failed to upload audio blob");
+  }
+  const { storageId } = await uploadResponse.json();
+
+  await fetchMutation(
+    api.transcript.sendAudio,
+    {
+      meetingID,
+      storageId,
+    },
+    { token }
+  );
 
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Completed", meetingID })}\n\n`

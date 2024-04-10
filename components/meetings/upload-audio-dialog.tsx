@@ -11,7 +11,14 @@ import {
   DialogContent,
   Dialog,
 } from "@/components/ui/dialog";
-import { UploadIcon, AudioLines, Volume2, X } from "lucide-react";
+import {
+  UploadIcon,
+  AudioLines,
+  Volume2,
+  X,
+  ArrowRightFromLine,
+  ArrowRight,
+} from "lucide-react";
 import { Progress } from "../ui/progress";
 import Spinner from "../ui/spinner";
 import { useRouter } from "next/navigation";
@@ -156,8 +163,17 @@ export default function UploadAudioDialog({
     }
   };
 
+  const handleDialogOpenChange = (open: boolean) => {
+    if (!open) {
+      // Dialog is being closed
+      setSelectedFile(null); // Remove the selected file
+      setUploadStatus(null); // Reset the upload status
+      setProgressStatus(null); // Reset the progress status
+    }
+  };
+
   return (
-    <Dialog>
+    <Dialog onOpenChange={handleDialogOpenChange}>
       <DialogTrigger asChild>
         <Button className="w-full" variant="outline">
           <UploadIcon className="mr-2 h-4 w-4" />
@@ -229,13 +245,14 @@ export default function UploadAudioDialog({
                       {uploadStatus === "pending" && (
                         <span className="text-sm text-muted-foreground">
                           <Spinner className="mr-2" />
-                          {progressStatus || "Processing..."}
+                          {progressStatus || "Calling the backend"}
                         </span>
                       )}
                       {uploadStatus === "completed" && (
-                        <span className="text-sm text-green-500">
-                          Transcription Complete
-                        </span>
+                        <div className="flex flex-row items-center text-sm text-green-500">
+                          <span>Meeting Ready!</span>
+                          <ArrowRight className="ml-2 w-5 h-5" />
+                        </div>
                       )}
                     </div>
                   </div>
