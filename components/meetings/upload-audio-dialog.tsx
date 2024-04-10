@@ -26,6 +26,8 @@ export default function UploadAudioDialog({
   meetingSelectedLanguage,
 }: UploadAudioDialogProps) {
   const [createdMeetingId, setCreatedMeetingId] = useState<string | null>(null);
+  const [progressStatus, setProgressStatus] = useState<string | null>(null);
+
   const [uploadStatus, setUploadStatus] = useState<
     "pending" | "completed" | null
   >(null);
@@ -64,7 +66,6 @@ export default function UploadAudioDialog({
     }
   };
 
-  // Function to upload the file
   const uploadFile = async () => {
     if (!selectedFile) return; // Exit if no file is selected
 
@@ -79,29 +80,57 @@ export default function UploadAudioDialog({
     try {
       setUploadStatus("pending");
 
+      console.log("Upload started");
+
       const response = await fetch("/api/uploadAudioDeepgram", {
-        // Your API endpoint
         method: "POST",
         body: formData,
-        // Do not set 'Content-Type' header here, as the browser will set it with the correct boundary
       });
 
-      const result = await response.json();
-      if (response.ok) {
-        console.log("Upload successful", result);
-        setUploadStatus("completed");
-        const meetingId = result.meetingID;
-        setCreatedMeetingId(meetingId);
-        // Handle success scenario (e.g., showing a success message)
-      } else {
-        console.error("Upload failed", result);
-        setUploadStatus(null);
-        // Handle failure scenario (e.g., showing an error message)
+      const reader = response.body?.getReader();
+      if (reader) {
+        const decoder = new TextDecoder();
+        let done = false;
+
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+
+          console.log("Upload completed");
+
+          if (value) {
+            const decodedValue = decoder.decode(value);
+            const eventData = decodedValue.trim().split("\n");
+            console.log("Events received: ", eventData);
+
+            for (const event of eventData) {
+              console.log("Event received:", event);
+              if (event.startsWith("data:")) {
+                console.log("Event data:", event);
+                const jsonString = event.substring(5).trim();
+                try {
+                  const data = JSON.parse(jsonString);
+                  console.log("Parsed event data:", data);
+
+                  if (data.status === "Completed") {
+                    setUploadStatus("completed");
+                    setCreatedMeetingId(data.meetingID);
+                    setProgressStatus(null);
+                  } else {
+                    setProgressStatus(data.status);
+                  }
+                } catch (error) {
+                  console.error("Error parsing event data:", jsonString, error);
+                }
+              }
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Error uploading file:", error);
       setUploadStatus(null);
-      // Handle error scenario
+      setProgressStatus(null);
     }
   };
 
@@ -200,7 +229,7 @@ export default function UploadAudioDialog({
                       {uploadStatus === "pending" && (
                         <span className="text-sm text-muted-foreground">
                           <Spinner className="mr-2" />
-                          Processing...
+                          {progressStatus || "Processing..."}
                         </span>
                       )}
                       {uploadStatus === "completed" && (
