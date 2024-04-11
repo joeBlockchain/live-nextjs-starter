@@ -4,6 +4,58 @@ import { createClient } from "@deepgram/sdk";
 import { api } from "@/convex/_generated/api";
 import { fetchMutation, fetchAction } from "convex/nextjs";
 import type { Id } from "@/convex/_generated/dataModel";
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY, // defaults to process.env["ANTHROPIC_API_KEY"]
+});
+
+async function proposeMeetingTitle(transcript: string): Promise<string> {
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-3-haiku-20240307",
+      max_tokens: 1000,
+      temperature: 0,
+      system:
+        "You are a helpful assistant tasked with proposing a meeting title based on the following transcript. Use JSON format with the key 'title'.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                "here is my transcript\n " +
+                transcript +
+                "\n\nPropose a meeting title based on this transcript using JSON format with the key 'title'.",
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!msg.content || msg.content.length === 0) {
+      throw new Error("Anthropic response is empty or not in expected format");
+    }
+
+    // Assuming the 'text' property of the first object in the array contains the JSON string
+    const jsonString = msg.content[0].text;
+
+    // Now you can parse jsonString because it's a string
+    const contentObj = JSON.parse(jsonString);
+    if (!contentObj.title) {
+      throw new Error(
+        "Failed to extract meeting title from Anthropic response"
+      );
+    }
+
+    // Return just the title string
+    return contentObj.title;
+  } catch (error) {
+    console.error("Anthropic Error:", error);
+    throw new Error("Failed to generate meeting title");
+  }
+}
 
 async function getAuthToken() {
   return (await auth().getToken({ template: "convex" })) ?? undefined;
@@ -87,6 +139,31 @@ async function* makeIterator(
   if (error) {
     throw new Error("Deepgram API error");
   }
+
+  const audioDurationInSeconds = Math.floor(result.metadata.duration);
+
+  const updateDurationResponse = await fetchMutation(
+    api.meetings.updateMeetingDetails,
+    {
+      meetingID,
+      updates: {
+        duration: Math.floor(audioDurationInSeconds),
+      },
+    },
+    { token }
+  );
+
+  // Call proposeMeetingTitle without awaiting and store the promise
+  yield encoder.encode(
+    `data: ${JSON.stringify({ status: "Propose Title" })}\n\n`
+  );
+  await sleep(200);
+
+  // Extract the transcript from the result
+  const completeTranscript =
+    result.results.channels[0].alternatives[0].transcript;
+
+  const proposeTitlePromise = proposeMeetingTitle(completeTranscript);
 
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing speakers" })}\n\n`
@@ -190,6 +267,21 @@ async function* makeIterator(
     {
       meetingID,
       storageId,
+    },
+    { token }
+  );
+
+  // Await the proposeTitlePromise to get the proposed title
+  const proposedTitle = await proposeTitlePromise;
+
+  // Update the meeting title
+  const updateTitleResponse = await fetchMutation(
+    api.meetings.updateMeetingDetails,
+    {
+      meetingID,
+      updates: {
+        newTitle: proposedTitle,
+      },
     },
     { token }
   );

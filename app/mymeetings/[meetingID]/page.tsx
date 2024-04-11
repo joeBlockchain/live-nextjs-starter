@@ -306,9 +306,6 @@ export default function Page({
           }}
           className="text-3xl font-bold leading-none border-none focus:ring-0"
         />
-        <div className="">
-          <UploadAudioDialog meetingId={params.meetingID} />
-        </div>
         <div className="" />
         <Microphone
           meetingID={params.meetingID}
