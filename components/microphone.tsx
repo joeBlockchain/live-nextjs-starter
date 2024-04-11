@@ -50,6 +50,7 @@ import Dg from "@/app/dg.svg";
 //import custom stuff
 import TranscriptDisplay from "@/components/microphone/transcript";
 import { extractSegment } from "@/lib/ffmpgUtils";
+import UploadAudioDialog from "./meetings/upload-audio-dialog";
 
 type SpeakerEmbeddingsCount = {
   [speakerNumber: number]: number;
@@ -1179,28 +1180,35 @@ export default function Microphone({
           )}
         </div>
         {/* toggle microphone */}
-        {!downloadUrl && (
-          <Button
-            variant={
-              !!userMedia && !!microphone && micOpen
-                ? "destructive"
-                : "secondary"
-            }
-            size="icon"
-            onClick={() => toggleMicrophone()}
-            disabled={isLoadingKey} // Button is disabled if isLoadingKey is true
-            className={
-              !!userMedia && !!microphone && micOpen
-                ? "" // recording enabled
-                : "" // recording disabled
-            }
-          >
-            {!!userMedia && !!microphone && micOpen ? (
-              <Pause className="w-6 h-6" />
-            ) : (
-              <Mic className="w-6 h-6" />
+        {initialDuration <= 0 && !downloadUrl && (
+          <div className="flex flex-row items-center space-x-2">
+            {timer === 0 && (
+              <div className="">
+                <UploadAudioDialog meetingId={meetingID} />
+              </div>
             )}
-          </Button>
+            <Button
+              variant={
+                !!userMedia && !!microphone && micOpen
+                  ? "destructive"
+                  : "secondary"
+              }
+              size="icon"
+              onClick={() => toggleMicrophone()}
+              disabled={isLoadingKey} // Button is disabled if isLoadingKey is true
+              className={
+                !!userMedia && !!microphone && micOpen
+                  ? "" // recording enabled
+                  : "" // recording disabled
+              }
+            >
+              {!!userMedia && !!microphone && micOpen ? (
+                <Pause className="w-6 h-6" />
+              ) : (
+                <Mic className="w-6 h-6" />
+              )}
+            </Button>
+          </div>
         )}
         {/* toggle download */}
 

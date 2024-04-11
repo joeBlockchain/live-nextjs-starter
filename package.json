@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.4",
     "@blocknote/core": "^0.11.1",
     "@blocknote/react": "^0.11.1",
     "@clerk/nextjs": "^4.29.5",

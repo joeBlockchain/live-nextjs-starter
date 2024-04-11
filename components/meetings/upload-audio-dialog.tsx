@@ -249,7 +249,7 @@ export default function UploadAudioDialog({
                         </span>
                       )}
                       {uploadStatus === "completed" && (
-                        <div className="flex flex-row items-center text-sm text-green-500">
+                        <div className="flex flex-row items-center text-sm text-blue-500 dark:text-blue-400">
                           <span>Meeting Ready!</span>
                           <ArrowRight className="ml-2 w-5 h-5" />
                         </div>
