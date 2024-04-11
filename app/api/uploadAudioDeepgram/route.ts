@@ -6,6 +6,8 @@ import { fetchMutation, fetchAction } from "convex/nextjs";
 import type { Id } from "@/convex/_generated/dataModel";
 import Anthropic from "@anthropic-ai/sdk";
 
+export const runtime = "edge";
+
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY, // defaults to process.env["ANTHROPIC_API_KEY"]
 });
