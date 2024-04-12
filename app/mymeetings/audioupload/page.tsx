@@ -62,6 +62,10 @@ const TestTranscriptionPage = () => {
           )}
         </div>
       )}
+      <button className="relative inline-block px-4 py-2 bg-blue-500 text-white">
+        <span className="relative z-10">Click me</span>
+        <div className="absolute top-0 right-0 w-0 h-0 border-t-[20px] border-t-transparent border-r-[20px] border-r-blue-500 border-b-[20px] border-b-transparent"></div>
+      </button>
     </div>
   );
 };

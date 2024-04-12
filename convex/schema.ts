@@ -92,6 +92,11 @@ export default defineSchema({
     meetingID: v.id("meetings"),
     userId: v.string(),
   }).index("by_meetingID", ["meetingID"]),
+  meetingAudio: defineTable({
+    storageId: v.id("_storage"),
+    meetingID: v.id("meetings"),
+    userId: v.string(),
+  }).index("by_meetingID", ["meetingID"]),
   sentenceEmbeddings: defineTable({
     meetingID: v.id("meetings"),
     finalizedSentenceId: v.id("finalizedSentences"),

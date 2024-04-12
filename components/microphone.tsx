@@ -1166,6 +1166,29 @@ export default function Microphone({
   //   return <span className="">Loading temporary API key...</span>;
   // if (isLoading) return <span className="">Loading the app...</span>;
 
+  const meetingAudioFileURL = useQuery(api.transcript.generateAudioFileUrl, {
+    meetingID: meetingID,
+  }) as string;
+
+  useEffect(() => {
+    if (meetingAudioFileURL) {
+      setDownloadUrl(meetingAudioFileURL);
+    }
+  }, [meetingAudioFileURL]);
+
+  const downloadAudio = async () => {
+    if (downloadUrl) {
+      const response = await fetch(downloadUrl);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "recorded_audio.webm";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
     <div className="flex flex-col">
       <div className="flex flex-row">
@@ -1213,10 +1236,8 @@ export default function Microphone({
         {/* toggle download */}
 
         {downloadUrl && (
-          <Button size="icon" className="">
-            <Link href={downloadUrl} download="recorded_audio.webm">
-              <Download />
-            </Link>
+          <Button size="icon" className="" onClick={downloadAudio}>
+            <Download />
           </Button>
         )}
       </div>

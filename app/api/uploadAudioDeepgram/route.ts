@@ -92,10 +92,10 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Authenticating" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Initiating" })}\n\n`);
-  await sleep(200);
+  await sleep(100);
 
   const file = formData.get("file") as File;
 
@@ -114,7 +114,7 @@ async function* makeIterator(
   }
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Uploading" })}\n\n`);
-  await sleep(200);
+  await sleep(100);
 
   if (!file) {
     throw new Error("No file uploaded");
@@ -123,7 +123,7 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Transcribing" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   const deepgram = createClient(process.env.DEEPGRAM_API_KEY!);
   const fileBuffer = await file.arrayBuffer();
@@ -159,7 +159,7 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Propose Title" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   // Extract the transcript from the result
   const completeTranscript =
@@ -170,7 +170,7 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing speakers" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   const uniqueSpeakers = new Set(
     result.results.channels[0].alternatives[0].words.map(
@@ -198,7 +198,7 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing transcript" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   const words = result.results.channels[0].alternatives[0].words;
   let currentSpeaker = words[0].speaker;
@@ -237,7 +237,7 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Generate embeddings" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   await fetchAction(
     api.generateEmbeddings.createEmbeddingsforFinalizedSentencesInMeetingID,
@@ -246,7 +246,7 @@ async function* makeIterator(
   );
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Save audio" })}\n\n`);
-  await sleep(200);
+  await sleep(100);
 
   const uploadUrl = await fetchMutation(
     api.transcript.generateAudioUploadUrl,
@@ -265,7 +265,7 @@ async function* makeIterator(
   const { storageId } = await uploadResponse.json();
 
   await fetchMutation(
-    api.transcript.sendAudio,
+    api.transcript.saveMeetingAudio,
     {
       meetingID,
       storageId,
