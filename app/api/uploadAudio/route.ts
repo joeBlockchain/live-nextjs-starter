@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSign } from "crypto";
-import fs from "fs";
 
 export async function POST(request: NextRequest) {
   try {
     console.log("Received POST request");
 
-    const endpointUrl =
-      "https://us-central1-brysis-consulting.cloudfunctions.net/vm-start";
+    const endpointUrl = process.env.GCLOUD_COMPUTE_VM_ENDPOINT;
+    if (!endpointUrl) {
+      throw new Error(
+        "GCLOUD_COMPUTE_VM_ENDPOINT not found in environment variables"
+      );
+    }
+
     const formData = await request.formData();
     const audioFile = formData.get("audio_file") as File | null;
-
     if (!audioFile) {
       console.log("Audio file not found");
       return NextResponse.json(
@@ -21,9 +24,11 @@ export async function POST(request: NextRequest) {
 
     console.log("Audio file received");
 
-    const requestData = { key: process.env.GCLOUD_COMPUTE_VM_KEY };
-    const signature = await signRequestData(requestData);
+    const requestData = {
+      key: process.env.GCLOUD_COMPUTE_VM_KEY,
+    };
 
+    const signature = await signRequestData(requestData);
     console.log("Request data signed");
 
     const vmResponse = await makePostRequest(
@@ -31,25 +36,36 @@ export async function POST(request: NextRequest) {
       requestData,
       signature
     );
-
     console.log("VM response received");
 
     const { externalIP } = await vmResponse.json();
-
     console.log("External IP:", externalIP);
 
-    const indexUrl = `http://${externalIP}:5000/`;
-    const transcriptionUrl = `http://${externalIP}:5000/transcribe_whisperx`;
+    const transcriptionServicePort = process.env.TRANSCRIPTION_SERVICE_PORT;
+    if (!transcriptionServicePort) {
+      throw new Error(
+        "TRANSCRIPTION_SERVICE_PORT not found in environment variables"
+      );
+    }
+
+    const transcriptionServiceUrl = `http://${externalIP}:${transcriptionServicePort}`;
+    const indexUrl = `${transcriptionServiceUrl}/`;
+    const transcriptionEndpoint = process.env.TRANSCRIPTION_ENDPOINT;
+    if (!transcriptionEndpoint) {
+      throw new Error(
+        "TRANSCRIPTION_ENDPOINT not found in environment variables"
+      );
+    }
+
+    const transcriptionUrl = `${transcriptionServiceUrl}${transcriptionEndpoint}`;
 
     await retryRequest(indexUrl);
-
     console.log("Index URL request successful");
 
     const transcriptionResponse = await transcribeAudio(
       transcriptionUrl,
       audioFile
     );
-
     console.log("Transcription response:", transcriptionResponse);
 
     return NextResponse.json({ transcript: transcriptionResponse });
@@ -67,6 +83,7 @@ async function signRequestData(requestData: object): Promise<string> {
   if (!privateKey) {
     throw new Error("Private key not found in environment variables");
   }
+
   const sign = createSign("SHA256");
   sign.update(JSON.stringify(requestData));
   sign.end();

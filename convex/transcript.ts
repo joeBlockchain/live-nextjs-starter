@@ -483,19 +483,15 @@ export const generateAudioFileUrl = query({
       throw new Error("User not authenticated");
     }
 
-    console.log("meetingID", meetingID);
-
     const audioRecord = await ctx.db
       .query("meetingAudio")
       .filter((q) => q.eq(q.field("meetingID"), meetingID))
       .first();
 
-    if (!audioRecord) {
-      throw new Error("Audio record not found");
-    }
-
-    // Correctly access the storageId property and ensure it's not null
-    return await ctx.storage.getUrl(audioRecord.storageId);
+    const audioUrl = audioRecord
+      ? await ctx.storage.getUrl(audioRecord.storageId)
+      : null;
+    return audioUrl;
   },
 });
 

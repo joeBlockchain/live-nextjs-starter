@@ -9,7 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 export const runtime = "edge";
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY, // defaults to process.env["ANTHROPIC_API_KEY"]
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 async function proposeMeetingTitle(transcript: string): Promise<string> {
@@ -40,10 +40,7 @@ async function proposeMeetingTitle(transcript: string): Promise<string> {
       throw new Error("Anthropic response is empty or not in expected format");
     }
 
-    // Assuming the 'text' property of the first object in the array contains the JSON string
     const jsonString = msg.content[0].text;
-
-    // Now you can parse jsonString because it's a string
     const contentObj = JSON.parse(jsonString);
     if (!contentObj.title) {
       throw new Error(
@@ -51,7 +48,6 @@ async function proposeMeetingTitle(transcript: string): Promise<string> {
       );
     }
 
-    // Return just the title string
     return contentObj.title;
   } catch (error) {
     console.error("Anthropic Error:", error);
@@ -155,13 +151,11 @@ async function* makeIterator(
     { token }
   );
 
-  // Call proposeMeetingTitle without awaiting and store the promise
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Propose Title" })}\n\n`
   );
   await sleep(100);
 
-  // Extract the transcript from the result
   const completeTranscript =
     result.results.channels[0].alternatives[0].transcript;
 
@@ -172,11 +166,8 @@ async function* makeIterator(
   );
   await sleep(100);
 
-  const uniqueSpeakers = new Set(
-    result.results.channels[0].alternatives[0].words.map(
-      (word: any) => word.speaker
-    )
-  );
+  const words = result.results.channels[0].alternatives[0].words;
+  const uniqueSpeakers = new Set(words.map((word: any) => word.speaker));
   const speakerArray = Array.from(uniqueSpeakers);
   const speakerMap = new Map<number, string>();
 
@@ -195,13 +186,55 @@ async function* makeIterator(
     speakerMap.set(speakerNumber, speakerID);
   }
 
+  // Find the longest spoken segment for each speaker
+  const speakerSegments = new Map<number, { start: number; end: number }>();
+  let currentSpeaker: number | undefined = words[0].speaker;
+  let segmentStart = words[0].start;
+  let segmentEnd = words[0].end;
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+
+    if (word.speaker !== currentSpeaker) {
+      if (
+        currentSpeaker !== undefined &&
+        (!speakerSegments.has(currentSpeaker) ||
+          segmentEnd - segmentStart >
+            speakerSegments.get(currentSpeaker)!.end -
+              speakerSegments.get(currentSpeaker)!.start)
+      ) {
+        speakerSegments.set(currentSpeaker, {
+          start: segmentStart,
+          end: segmentEnd,
+        });
+      }
+      currentSpeaker = word.speaker;
+      segmentStart = word.start;
+    }
+    segmentEnd = word.end;
+  }
+
+  // Handle the last segment
+  if (
+    currentSpeaker !== undefined &&
+    (!speakerSegments.has(currentSpeaker) ||
+      segmentEnd - segmentStart >
+        speakerSegments.get(currentSpeaker)!.end -
+          speakerSegments.get(currentSpeaker)!.start)
+  ) {
+    speakerSegments.set(currentSpeaker, {
+      start: segmentStart,
+      end: segmentEnd,
+    });
+  }
+
+  console.log("Longest segments:", speakerSegments);
+
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing transcript" })}\n\n`
   );
   await sleep(100);
 
-  const words = result.results.channels[0].alternatives[0].words;
-  let currentSpeaker = words[0].speaker;
   let currentTranscript = "";
   let startTime = words[0].start;
 
@@ -273,10 +306,8 @@ async function* makeIterator(
     { token }
   );
 
-  // Await the proposeTitlePromise to get the proposed title
   const proposedTitle = await proposeTitlePromise;
 
-  // Update the meeting title
   const updateTitleResponse = await fetchMutation(
     api.meetings.updateMeetingDetails,
     {

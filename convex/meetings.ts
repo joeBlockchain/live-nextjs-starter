@@ -309,6 +309,7 @@ export const deleteMeetingAndRelatedRecords = mutation({
         "wordDetails",
         "questions",
         "audioFiles",
+        "meetingAudio",
         "sentenceEmbeddings",
         "audioEmbeddings",
       ];
