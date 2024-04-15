@@ -27,7 +27,9 @@ async function extractAudioClip(
   const tempOutputFile = path.join("/tmp", `audio-output-${timestamp}.webm`);
 
   // Write the input buffer to a temporary file
+  console.log("Writing input buffer to temporary file:", tempInputFile);
   await fs.promises.writeFile(tempInputFile, buffer);
+  console.log("Input buffer written to temporary file");
 
   // Calculate the duration of the clip
   const duration = end - start;
@@ -35,6 +37,7 @@ async function extractAudioClip(
   try {
     // Use FFmpeg to extract the audio clip and convert it to Opus format
     await new Promise<void>((resolve, reject) => {
+      console.log("Starting FFmpeg process");
       const ffmpegProcess = spawn(
         "ffmpeg",
         [
@@ -64,8 +67,10 @@ async function extractAudioClip(
 
       ffmpegProcess.on("close", (code: number) => {
         if (code === 0) {
+          console.log("FFmpeg process completed successfully");
           resolve();
         } else {
+          console.error(`FFmpeg process exited with code ${code}`);
           reject(new Error(`FFmpeg process exited with code ${code}`));
         }
       });
@@ -100,6 +105,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    console.log("Received request body:", body);
     const {
       buffer: encodedBuffer,
       speakerId,
@@ -157,8 +163,8 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "audio/webm" },
     });
   } catch (error) {
-    console.error("Error clipping audio:", error);
-    return new Response(JSON.stringify({ error: "Failed to clip audio" }), {
+    console.error("Error clipping audio!:", error);
+    return new Response(JSON.stringify({ error: "Failed to clip audio!" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
