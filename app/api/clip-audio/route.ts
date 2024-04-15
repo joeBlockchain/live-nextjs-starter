@@ -22,6 +22,7 @@ async function extractAudioClip(
   start: number,
   end: number
 ): Promise<Buffer> {
+  console.log("Inside extractAudioClip function");
   const timestamp = format(new Date(), "yyyyMMdd-HHmmss-SSS");
   const tempInputFile = path.join("/tmp", `audio-input-${timestamp}.webm`);
   const tempOutputFile = path.join("/tmp", `audio-output-${timestamp}.webm`);
@@ -89,6 +90,7 @@ async function extractAudioClip(
 }
 
 export async function POST(request: NextRequest) {
+  console.log("Received request in clip-audio route");
   const authHeader = request.headers.get("Authorization");
   const token = authHeader?.replace("Bearer ", "") || "";
 
@@ -115,7 +117,9 @@ export async function POST(request: NextRequest) {
       meetingID,
     } = body;
     const buffer = Buffer.from(encodedBuffer, "base64");
+    console.log("Calling extractAudioClip function");
     const clippedAudioBuffer = await extractAudioClip(buffer, start, end);
+    console.log("Clipped audio buffer:", clippedAudioBuffer);
 
     console.log("Uploading clipped audio buffer to storage...");
 
@@ -163,8 +167,8 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "audio/webm" },
     });
   } catch (error) {
-    console.error("Error clipping audio!:", error);
-    return new Response(JSON.stringify({ error: "Failed to clip audio!" }), {
+    console.error("Error clipping audio!!:", error);
+    return new Response(JSON.stringify({ error: "Failed to clip audio!!" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
