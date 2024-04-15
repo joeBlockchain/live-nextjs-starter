@@ -87,12 +87,16 @@ export async function POST(request: NextRequest) {
   const authHeader = request.headers.get("Authorization");
   const token = authHeader?.replace("Bearer ", "") || "";
 
+  console.log("received request inside POST handler");
+
   if (!token) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  console.log("passed authentication");
 
   try {
     const body = await request.json();
@@ -106,6 +110,8 @@ export async function POST(request: NextRequest) {
     } = body;
     const buffer = Buffer.from(encodedBuffer, "base64");
     const clippedAudioBuffer = await extractAudioClip(buffer, start, end);
+
+    console.log("Uploading clipped audio buffer to storage...");
 
     const uploadUrlClip = await fetchMutation(
       api.transcript.generateAudioUploadUrl,

@@ -48,6 +48,7 @@ async function extractAudioClip(
   });
 
   if (!response.ok) {
+    console.log("Error clipping audio:", await response.text());
     throw new Error("Failed to clip audio");
   }
 
