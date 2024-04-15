@@ -48,7 +48,16 @@ async function extractAudioClip(
   });
 
   if (!response.ok) {
-    throw new Error("Failed to clip audio!");
+    const errorDetails = await response.text(); // or response.json() if the response is in JSON format
+    console.error(
+      "Failed to clip audio! Response status:",
+      response.status,
+      "Details:",
+      errorDetails
+    );
+    throw new Error(
+      `Failed to clip audio! Response status: ${response.status} Details: ${errorDetails}`
+    );
   }
 
   const clippedAudioBuffer = await response.arrayBuffer();
