@@ -23,8 +23,13 @@ async function extractAudioClip(
   meetingID: Id<"meetings">,
   authToken: string
 ): Promise<Buffer> {
+  console.log("Extracting audio clip...");
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   const clipAudioUrl = `${baseUrl}/api/clip-audio`;
+  console.log(
+    "Extracting audio clip and sending to Deepgram at url path:",
+    clipAudioUrl
+  );
 
   const response = await fetch(clipAudioUrl, {
     method: "POST",
