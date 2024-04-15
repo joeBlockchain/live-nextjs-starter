@@ -31,6 +31,19 @@ async function extractAudioClip(
     clipAudioUrl
   );
 
+  console.log("Sending request to clip-audio with token:", authToken);
+  console.log(
+    "Request details:",
+    JSON.stringify({
+      buffer: buffer.toString("base64"),
+      speakerId,
+      speakerNumber,
+      start,
+      end,
+      meetingID,
+    })
+  );
+
   const response = await fetch(clipAudioUrl, {
     method: "POST",
     headers: {
