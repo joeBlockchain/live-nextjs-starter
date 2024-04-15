@@ -51,6 +51,7 @@ import Dg from "@/app/dg.svg";
 import TranscriptDisplay from "@/components/microphone/transcript";
 import { extractSegment } from "@/lib/ffmpgUtils";
 import UploadAudioDialog from "./meetings/upload-audio-dialog";
+import Spinner from "./ui/spinner";
 
 type SpeakerEmbeddingsCount = {
   [speakerNumber: number]: number;
@@ -186,6 +187,7 @@ export default function Microphone({
 
   const generateUploadUrl = useMutation(api.transcript.generateAudioUploadUrl);
   const sendAudio = useMutation(api.transcript.sendAudio);
+  const saveMeetingAudio = useMutation(api.transcript.saveMeetingAudio);
 
   const runProcessAudioEmbedding = useAction(
     api.transcript.processAudioEmbedding
@@ -197,7 +199,10 @@ export default function Microphone({
 
   // Refactored function to only upload the audio blob and return the storageId
   const uploadAudioToConvexFiles = useCallback(
-    async (audioBlob: Blob): Promise<string> => {
+    async (
+      audioBlob: Blob,
+      tableType: "audioFiles" | "meetingAudio"
+    ): Promise<string> => {
       try {
         // Step 1: Get a short-lived upload URL
         const uploadUrl = await generateUploadUrl();
@@ -213,23 +218,28 @@ export default function Microphone({
         }
         const { storageId } = await response.json();
 
-        // Step 3: Save the newly allocated storage id to the database
-        await sendAudio({ storageId, meetingID });
+        // Step 3: Save the newly allocated storage id to the specified table
+        if (tableType === "audioFiles") {
+          await sendAudio({ storageId, meetingID });
+        } else if (tableType === "meetingAudio") {
+          await saveMeetingAudio({ storageId, meetingID });
+        }
 
         return storageId as Id<"_storage">;
       } catch (error) {
         console.error("Error uploading audio blob:", error);
-        throw error; // Rethrow the error to handle it in the calling function
+        throw error;
       }
     },
-    [generateUploadUrl, sendAudio, meetingID]
+    [generateUploadUrl, sendAudio, saveMeetingAudio, meetingID]
   );
 
   const uploadAudioBlob = useCallback(
     async (audioBlob: Blob, speaker: SpeakerDetail) => {
       try {
         const storageId: Id<"_storage"> = (await uploadAudioToConvexFiles(
-          audioBlob
+          audioBlob,
+          "audioFiles"
         )) as Id<"_storage">;
 
         // Call the generateEmebedding action
@@ -569,12 +579,12 @@ export default function Microphone({
       //This was for saving the whole audio but now we are using audio clips to embed audio segments with the uploadAudioBlob function
       //revisit this if need to save full audio file
       // Combine audio blobs into a single Blob
-      // const combinedAudioBlob = new Blob(audioBlobs, { type: "audio/webm" });
-      // // Code to create a downloadable link for the combined audio
+      const combinedAudioBlob = new Blob(audioBlobs, { type: "audio/webm" });
+      // Code to create a downloadable link for the combined audio
       // const audioURL = URL.createObjectURL(combinedAudioBlob);
       // setDownloadUrl(audioURL); // Set the URL for the download button to use
 
-      // uploadAudioBlob(combinedAudioBlob);
+      uploadAudioToConvexFiles(combinedAudioBlob, "meetingAudio");
 
       // handle next steps to initiate audio embedding
       // console.log("calling /api/embedding with audio blob:", combinedAudioBlob);
@@ -1015,7 +1025,10 @@ export default function Microphone({
         lastSentence,
         audioBlobs
       );
-      const storageId = await uploadAudioToConvexFiles(sectionAudioBlob);
+      const storageId = await uploadAudioToConvexFiles(
+        sectionAudioBlob,
+        "audioFiles"
+      );
 
       const matches = await runGetNearestMatchingSpeakers({
         storageId: storageId as Id<"_storage">,
@@ -1166,6 +1179,30 @@ export default function Microphone({
   //   return <span className="">Loading temporary API key...</span>;
   // if (isLoading) return <span className="">Loading the app...</span>;
 
+  const meetingAudioFileURL = useQuery(api.transcript.generateAudioFileUrl, {
+    meetingID: meetingID,
+  }) as string;
+
+  useEffect(() => {
+    if (meetingAudioFileURL) {
+      console.log("meetingAudioFileURL", meetingAudioFileURL);
+      setDownloadUrl(meetingAudioFileURL);
+    }
+  }, [meetingAudioFileURL]);
+
+  const downloadAudio = async () => {
+    if (downloadUrl) {
+      const response = await fetch(downloadUrl);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "recorded_audio.webm";
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+  };
+
   return (
     <div className="flex flex-col">
       <div className="flex flex-row">
@@ -1211,13 +1248,22 @@ export default function Microphone({
           </div>
         )}
         {/* toggle download */}
-
-        {downloadUrl && (
-          <Button size="icon" className="">
-            <Link href={downloadUrl} download="recorded_audio.webm">
-              <Download />
-            </Link>
+        {downloadUrl ? (
+          <Button size="icon" className="" onClick={downloadAudio}>
+            <Download />
           </Button>
+        ) : (
+          (timer > 0 || initialDuration > 0) &&
+          !micOpen && (
+            <Button
+              variant="secondary"
+              size="icon"
+              className="flex items-center"
+              disabled
+            >
+              <Spinner className="" />
+            </Button>
+          )
         )}
       </div>
       {/* connection indicator for deepgram via socket and temp api key */}

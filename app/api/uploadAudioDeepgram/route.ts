@@ -1,3 +1,5 @@
+// uploadAuddioDeepgram/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs";
 import { createClient } from "@deepgram/sdk";
@@ -9,8 +11,71 @@ import Anthropic from "@anthropic-ai/sdk";
 export const runtime = "edge";
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY, // defaults to process.env["ANTHROPIC_API_KEY"]
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+async function extractAudioClip(
+  buffer: Buffer,
+  speakerId: Id<"speakers">,
+  speakerNumber: number,
+  start: number,
+  end: number,
+  meetingID: Id<"meetings">,
+  authToken: string
+): Promise<Buffer> {
+  console.log("Extracting audio clip...");
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  const clipAudioUrl = `${baseUrl}/api/clip-audio`;
+  console.log(
+    "Extracting audio clip and sending to Deepgram at url path:",
+    clipAudioUrl
+  );
+
+  console.log("Sending request to clip-audio with token:", authToken);
+  console.log(
+    "Request details:",
+    JSON.stringify({
+      buffer: buffer.toString("base64"),
+      speakerId,
+      speakerNumber,
+      start,
+      end,
+      meetingID,
+    })
+  );
+
+  const response = await fetch(clipAudioUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({
+      buffer: buffer.toString("base64"),
+      speakerId,
+      speakerNumber,
+      start,
+      end,
+      meetingID,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorDetails = await response.text(); // or response.json() if the response is in JSON format
+    console.error(
+      "Failed to clip audio! Response status:",
+      response.status,
+      "Details:",
+      errorDetails
+    );
+    throw new Error(
+      `Failed to clip audio! Response status: ${response.status} Details: ${errorDetails}`
+    );
+  }
+
+  const clippedAudioBuffer = await response.arrayBuffer();
+  return Buffer.from(clippedAudioBuffer);
+}
 
 async function proposeMeetingTitle(transcript: string): Promise<string> {
   try {
@@ -40,10 +105,7 @@ async function proposeMeetingTitle(transcript: string): Promise<string> {
       throw new Error("Anthropic response is empty or not in expected format");
     }
 
-    // Assuming the 'text' property of the first object in the array contains the JSON string
     const jsonString = msg.content[0].text;
-
-    // Now you can parse jsonString because it's a string
     const contentObj = JSON.parse(jsonString);
     if (!contentObj.title) {
       throw new Error(
@@ -51,7 +113,6 @@ async function proposeMeetingTitle(transcript: string): Promise<string> {
       );
     }
 
-    // Return just the title string
     return contentObj.title;
   } catch (error) {
     console.error("Anthropic Error:", error);
@@ -92,10 +153,10 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Authenticating" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Initiating" })}\n\n`);
-  await sleep(200);
+  await sleep(100);
 
   const file = formData.get("file") as File;
 
@@ -114,7 +175,7 @@ async function* makeIterator(
   }
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Uploading" })}\n\n`);
-  await sleep(200);
+  await sleep(100);
 
   if (!file) {
     throw new Error("No file uploaded");
@@ -123,7 +184,7 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Transcribing" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   const deepgram = createClient(process.env.DEEPGRAM_API_KEY!);
   const fileBuffer = await file.arrayBuffer();
@@ -155,13 +216,11 @@ async function* makeIterator(
     { token }
   );
 
-  // Call proposeMeetingTitle without awaiting and store the promise
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Propose Title" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
-  // Extract the transcript from the result
   const completeTranscript =
     result.results.channels[0].alternatives[0].transcript;
 
@@ -170,15 +229,15 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing speakers" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
-  const uniqueSpeakers = new Set(
-    result.results.channels[0].alternatives[0].words.map(
-      (word: any) => word.speaker
-    )
-  );
+  const words = result.results.channels[0].alternatives[0].words;
+  const uniqueSpeakers = new Set(words.map((word: any) => word.speaker));
   const speakerArray = Array.from(uniqueSpeakers);
-  const speakerMap = new Map<number, string>();
+  const speakerMap = new Map<
+    number,
+    { speakerId: Id<"speakers">; storageId: string }
+  >();
 
   for (const speakerNumber of speakerArray) {
     const speakerID = await fetchMutation(
@@ -192,16 +251,58 @@ async function* makeIterator(
       },
       { token }
     );
-    speakerMap.set(speakerNumber, speakerID);
+    speakerMap.set(speakerNumber, { speakerId: speakerID, storageId: "" });
   }
+
+  // Find the longest spoken segment for each speaker
+  const speakerSegments = new Map<number, { start: number; end: number }>();
+  let currentSpeaker: number | undefined = words[0].speaker;
+  let segmentStart = words[0].start;
+  let segmentEnd = words[0].end;
+
+  for (let i = 1; i < words.length; i++) {
+    const word = words[i];
+
+    if (word.speaker !== currentSpeaker) {
+      if (
+        currentSpeaker !== undefined &&
+        (!speakerSegments.has(currentSpeaker) ||
+          segmentEnd - segmentStart >
+            speakerSegments.get(currentSpeaker)!.end -
+              speakerSegments.get(currentSpeaker)!.start)
+      ) {
+        speakerSegments.set(currentSpeaker, {
+          start: segmentStart,
+          end: segmentEnd,
+        });
+      }
+      currentSpeaker = word.speaker;
+      segmentStart = word.start;
+    }
+    segmentEnd = word.end;
+  }
+
+  // Handle the last segment
+  if (
+    currentSpeaker !== undefined &&
+    (!speakerSegments.has(currentSpeaker) ||
+      segmentEnd - segmentStart >
+        speakerSegments.get(currentSpeaker)!.end -
+          speakerSegments.get(currentSpeaker)!.start)
+  ) {
+    speakerSegments.set(currentSpeaker, {
+      start: segmentStart,
+      end: segmentEnd,
+    });
+  }
+
+  console.log("Longest segments:", speakerSegments);
 
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing transcript" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
-  const words = result.results.channels[0].alternatives[0].words;
-  let currentSpeaker = words[0].speaker;
   let currentTranscript = "";
   let startTime = words[0].start;
 
@@ -221,7 +322,7 @@ async function* makeIterator(
             end: endTime,
             meetingID,
             speaker: Number(currentSpeaker),
-            speakerId: speakerId as Id<"speakers">,
+            speakerId: speakerId.speakerId,
             start: startTime,
           },
           { token }
@@ -235,9 +336,9 @@ async function* makeIterator(
   }
 
   yield encoder.encode(
-    `data: ${JSON.stringify({ status: "Generate embeddings" })}\n\n`
+    `data: ${JSON.stringify({ status: "Text embeddings" })}\n\n`
   );
-  await sleep(200);
+  await sleep(100);
 
   await fetchAction(
     api.generateEmbeddings.createEmbeddingsforFinalizedSentencesInMeetingID,
@@ -245,8 +346,49 @@ async function* makeIterator(
     { token }
   );
 
+  //save the audio clip for the longest part for each speaker
+  yield encoder.encode(
+    `data: ${JSON.stringify({ status: "Predicting speakers" })}\n\n`
+  );
+  await sleep(100);
+
+  // for (const [speakerNumber, segment] of Array.from(
+  //   speakerSegments.entries()
+  // )) {
+  //   const speakerClip = await extractAudioClip(
+  //     buffer,
+  //     segment.start,
+  //     segment.end,
+  //     meetingID,
+  //     token
+  //   );
+  // }
+
+  // const clipPromises = Array.from(speakerSegments.entries()).map(
+  //   async ([speakerNumber, segment]) => {
+  //     const speakerInfo = speakerMap.get(speakerNumber);
+  //     if (!speakerInfo) {
+  //       throw new Error(
+  //         `Speaker ID not found for speaker number ${speakerNumber}`
+  //       );
+  //     }
+  //     return extractAudioClip(
+  //       buffer,
+  //       speakerInfo.speakerId,
+  //       speakerNumber,
+  //       segment.start,
+  //       segment.end,
+  //       meetingID,
+  //       token
+  //     );
+  //   }
+  // );
+
+  // // Wait for all clip extraction promises to resolve
+  // const speakerClips = await Promise.all(clipPromises);
+
   yield encoder.encode(`data: ${JSON.stringify({ status: "Save audio" })}\n\n`);
-  await sleep(200);
+  await sleep(100);
 
   const uploadUrl = await fetchMutation(
     api.transcript.generateAudioUploadUrl,
@@ -265,7 +407,7 @@ async function* makeIterator(
   const { storageId } = await uploadResponse.json();
 
   await fetchMutation(
-    api.transcript.sendAudio,
+    api.transcript.saveMeetingAudio,
     {
       meetingID,
       storageId,
@@ -273,10 +415,8 @@ async function* makeIterator(
     { token }
   );
 
-  // Await the proposeTitlePromise to get the proposed title
   const proposedTitle = await proposeTitlePromise;
 
-  // Update the meeting title
   const updateTitleResponse = await fetchMutation(
     api.meetings.updateMeetingDetails,
     {
@@ -289,7 +429,24 @@ async function* makeIterator(
   );
 
   yield encoder.encode(
-    `data: ${JSON.stringify({ status: "Completed", meetingID })}\n\n`
+    `data: ${JSON.stringify({
+      status: "Completed",
+      meetingDetails: {
+        meetingId: meetingID,
+        title: proposedTitle,
+        duration: audioDurationInSeconds,
+      },
+      speakers: Array.from(speakerSegments.entries()).map(
+        ([speakerNumber, segment]) => {
+          const speakerInfo = speakerMap.get(speakerNumber);
+          return {
+            speakerId: speakerInfo?.speakerId || "",
+            speakerNumber,
+            longestSegment: segment,
+          };
+        }
+      ),
+    })}\n\n`
   );
 }
 

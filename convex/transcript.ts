@@ -454,10 +454,61 @@ export const sendAudio = mutation({
   },
 });
 
+export const saveMeetingAudio = mutation({
+  args: {
+    storageId: v.id("_storage"), // The ID of the uploaded file in Convex storage
+    meetingID: v.id("meetings"), // Assuming you want to associate the audio with a meeting
+  },
+  handler: async ({ db, auth }, args) => {
+    const user = await auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+    const url = await db.insert("meetingAudio", {
+      storageId: args.storageId,
+      meetingID: args.meetingID,
+      userId: user.subject,
+    });
+  },
+});
+
 export const generateAudioFileUrl = query({
-  args: { storageId: v.id("_storage") },
-  handler: async (ctx, { storageId }) => {
-    return await ctx.storage.getUrl(storageId);
+  args: {
+    meetingID: v.id("meetings"),
+  },
+  handler: async (ctx, { meetingID }) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    const audioRecord = await ctx.db
+      .query("meetingAudio")
+      .filter((q) => q.eq(q.field("meetingID"), meetingID))
+      .first();
+
+    const audioUrl = audioRecord
+      ? await ctx.storage.getUrl(audioRecord.storageId)
+      : null;
+    return audioUrl;
+  },
+});
+
+export const getStorageIdByMeetingId = query({
+  args: { meetingID: v.id("meetings") },
+  handler: async (ctx, { meetingID }) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    const audioRecord = await ctx.db
+      .query("meetingAudio") // Assuming "audioFiles" is the collection name
+      .filter((q) => q.eq(q.field("meetingID"), meetingID))
+      .first(); // Assuming you're interested in the first match
+    return audioRecord ? audioRecord.storageId : null;
   },
 });
 
