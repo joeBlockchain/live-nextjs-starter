@@ -322,8 +322,8 @@ export const deleteMeetingAndRelatedRecords = mutation({
             .collect();
 
           for (const record of records) {
-            if (collection === "audioFiles") {
-              // Special handling for audioFiles to delete from storage as well
+            if (collection === "audioFiles" || collection === "meetingAudio") {
+              // Special handling for audioFiles and meetingAudio to delete from storage
               try {
                 await ctx.storage.delete(record.storageId);
               } catch (error) {

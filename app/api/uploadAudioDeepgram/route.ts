@@ -1,3 +1,5 @@
+// uploadAuddioDeepgram/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs";
 import { createClient } from "@deepgram/sdk";
@@ -11,6 +13,42 @@ export const runtime = "edge";
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+async function extractAudioClip(
+  buffer: Buffer,
+  speakerId: Id<"speakers">,
+  speakerNumber: number,
+  start: number,
+  end: number,
+  meetingID: Id<"meetings">,
+  authToken: string
+): Promise<Buffer> {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  const clipAudioUrl = `${baseUrl}/api/clip-audio`;
+
+  const response = await fetch(clipAudioUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({
+      buffer: buffer.toString("base64"),
+      speakerId,
+      speakerNumber,
+      start,
+      end,
+      meetingID,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to clip audio");
+  }
+
+  const clippedAudioBuffer = await response.arrayBuffer();
+  return Buffer.from(clippedAudioBuffer);
+}
 
 async function proposeMeetingTitle(transcript: string): Promise<string> {
   try {
@@ -169,7 +207,10 @@ async function* makeIterator(
   const words = result.results.channels[0].alternatives[0].words;
   const uniqueSpeakers = new Set(words.map((word: any) => word.speaker));
   const speakerArray = Array.from(uniqueSpeakers);
-  const speakerMap = new Map<number, string>();
+  const speakerMap = new Map<
+    number,
+    { speakerId: Id<"speakers">; storageId: string }
+  >();
 
   for (const speakerNumber of speakerArray) {
     const speakerID = await fetchMutation(
@@ -183,7 +224,7 @@ async function* makeIterator(
       },
       { token }
     );
-    speakerMap.set(speakerNumber, speakerID);
+    speakerMap.set(speakerNumber, { speakerId: speakerID, storageId: "" });
   }
 
   // Find the longest spoken segment for each speaker
@@ -254,7 +295,7 @@ async function* makeIterator(
             end: endTime,
             meetingID,
             speaker: Number(currentSpeaker),
-            speakerId: speakerId as Id<"speakers">,
+            speakerId: speakerId.speakerId,
             start: startTime,
           },
           { token }
@@ -268,7 +309,7 @@ async function* makeIterator(
   }
 
   yield encoder.encode(
-    `data: ${JSON.stringify({ status: "Generate embeddings" })}\n\n`
+    `data: ${JSON.stringify({ status: "Text embeddings" })}\n\n`
   );
   await sleep(100);
 
@@ -277,6 +318,47 @@ async function* makeIterator(
     { meetingId: meetingID },
     { token }
   );
+
+  //save the audio clip for the longest part for each speaker
+  yield encoder.encode(
+    `data: ${JSON.stringify({ status: "Predicting speakers" })}\n\n`
+  );
+  await sleep(100);
+
+  // for (const [speakerNumber, segment] of Array.from(
+  //   speakerSegments.entries()
+  // )) {
+  //   const speakerClip = await extractAudioClip(
+  //     buffer,
+  //     segment.start,
+  //     segment.end,
+  //     meetingID,
+  //     token
+  //   );
+  // }
+
+  const clipPromises = Array.from(speakerSegments.entries()).map(
+    async ([speakerNumber, segment]) => {
+      const speakerInfo = speakerMap.get(speakerNumber);
+      if (!speakerInfo) {
+        throw new Error(
+          `Speaker ID not found for speaker number ${speakerNumber}`
+        );
+      }
+      return extractAudioClip(
+        buffer,
+        speakerInfo.speakerId,
+        speakerNumber,
+        segment.start,
+        segment.end,
+        meetingID,
+        token
+      );
+    }
+  );
+
+  // Wait for all clip extraction promises to resolve
+  const speakerClips = await Promise.all(clipPromises);
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Save audio" })}\n\n`);
   await sleep(100);
