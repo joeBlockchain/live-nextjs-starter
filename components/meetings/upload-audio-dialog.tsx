@@ -73,7 +73,7 @@ export default function UploadAudioDialog({
     }
   };
 
-  const uploadFile = async () => {
+  async function uploadFile() {
     if (!selectedFile) return; // Exit if no file is selected
 
     const formData = new FormData();
@@ -121,8 +121,29 @@ export default function UploadAudioDialog({
 
                   if (data.status === "Completed") {
                     setUploadStatus("completed");
-                    setCreatedMeetingId(data.meetingID);
+                    setCreatedMeetingId(data.meetingDetails.meetingId);
                     setProgressStatus(null);
+
+                    // Sequentially process each speaker
+                    for (const speaker of data.speakers) {
+                      const { speakerId, speakerNumber, longestSegment } =
+                        speaker;
+                      console.log(
+                        `Extracting audio for speaker number ${speakerNumber} with speaker ID ${speakerId}`
+                      );
+
+                      // Await the completion of clipAudio before continuing to the next iteration
+                      await clipAudio(
+                        selectedFile,
+                        speakerId,
+                        speakerNumber,
+                        longestSegment.start,
+                        longestSegment.end,
+                        data.meetingDetails.meetingId
+                      );
+                    }
+
+                    console.log("All audio clips extracted successfully");
                   } else {
                     setProgressStatus(data.status);
                   }
@@ -139,7 +160,33 @@ export default function UploadAudioDialog({
       setUploadStatus(null);
       setProgressStatus(null);
     }
-  };
+  }
+
+  async function clipAudio(
+    file: File,
+    speakerId: string,
+    speakerNumber: number,
+    start: number,
+    end: number,
+    meetingID: string
+  ) {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("speakerId", speakerId);
+    formData.append("speakerNumber", speakerNumber.toString());
+    formData.append("start", start.toString());
+    formData.append("end", end.toString());
+    formData.append("meetingID", meetingID);
+
+    const response = await fetch("/api/clip-audio", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to clip audio");
+    }
+  }
 
   // Call uploadFile when the selectedFile changes
   useEffect(() => {

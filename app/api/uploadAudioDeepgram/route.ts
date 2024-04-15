@@ -364,28 +364,28 @@ async function* makeIterator(
   //   );
   // }
 
-  const clipPromises = Array.from(speakerSegments.entries()).map(
-    async ([speakerNumber, segment]) => {
-      const speakerInfo = speakerMap.get(speakerNumber);
-      if (!speakerInfo) {
-        throw new Error(
-          `Speaker ID not found for speaker number ${speakerNumber}`
-        );
-      }
-      return extractAudioClip(
-        buffer,
-        speakerInfo.speakerId,
-        speakerNumber,
-        segment.start,
-        segment.end,
-        meetingID,
-        token
-      );
-    }
-  );
+  // const clipPromises = Array.from(speakerSegments.entries()).map(
+  //   async ([speakerNumber, segment]) => {
+  //     const speakerInfo = speakerMap.get(speakerNumber);
+  //     if (!speakerInfo) {
+  //       throw new Error(
+  //         `Speaker ID not found for speaker number ${speakerNumber}`
+  //       );
+  //     }
+  //     return extractAudioClip(
+  //       buffer,
+  //       speakerInfo.speakerId,
+  //       speakerNumber,
+  //       segment.start,
+  //       segment.end,
+  //       meetingID,
+  //       token
+  //     );
+  //   }
+  // );
 
-  // Wait for all clip extraction promises to resolve
-  const speakerClips = await Promise.all(clipPromises);
+  // // Wait for all clip extraction promises to resolve
+  // const speakerClips = await Promise.all(clipPromises);
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Save audio" })}\n\n`);
   await sleep(100);
@@ -429,7 +429,24 @@ async function* makeIterator(
   );
 
   yield encoder.encode(
-    `data: ${JSON.stringify({ status: "Completed", meetingID })}\n\n`
+    `data: ${JSON.stringify({
+      status: "Completed",
+      meetingDetails: {
+        meetingId: meetingID,
+        title: proposedTitle,
+        duration: audioDurationInSeconds,
+      },
+      speakers: Array.from(speakerSegments.entries()).map(
+        ([speakerNumber, segment]) => {
+          const speakerInfo = speakerMap.get(speakerNumber);
+          return {
+            speakerId: speakerInfo?.speakerId || "",
+            speakerNumber,
+            longestSegment: segment,
+          };
+        }
+      ),
+    })}\n\n`
   );
 }
 

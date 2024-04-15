@@ -1,5 +1,3 @@
-//clip-audio/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
@@ -9,16 +7,16 @@ import { clerkClient } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs";
 import { getAuth } from "@clerk/nextjs/server";
 import { format } from "date-fns";
-
 import { fetchMutation, fetchAction } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
+import type { Doc, Id } from "@/convex/_generated/dataModel";
 
 async function getAuthToken() {
   return (await auth().getToken({ template: "convex" })) ?? undefined;
 }
 
 async function extractAudioClip(
-  buffer: Buffer,
+  file: File,
   start: number,
   end: number
 ): Promise<Buffer> {
@@ -27,10 +25,13 @@ async function extractAudioClip(
   const tempInputFile = path.join("/tmp", `audio-input-${timestamp}.webm`);
   const tempOutputFile = path.join("/tmp", `audio-output-${timestamp}.webm`);
 
-  // Write the input buffer to a temporary file
-  console.log("Writing input buffer to temporary file:", tempInputFile);
-  await fs.promises.writeFile(tempInputFile, buffer);
-  console.log("Input buffer written to temporary file");
+  // Write the input file to a temporary file
+  console.log("Writing input file to temporary file:", tempInputFile);
+  await fs.promises.writeFile(
+    tempInputFile,
+    new Uint8Array(await file.arrayBuffer())
+  );
+  console.log("Input file written to temporary file");
 
   // Calculate the duration of the clip
   const duration = end - start;
@@ -91,8 +92,7 @@ async function extractAudioClip(
 
 export async function POST(request: NextRequest) {
   console.log("Received request in clip-audio route");
-  const authHeader = request.headers.get("Authorization");
-  const token = authHeader?.replace("Bearer ", "") || "";
+  const token = await getAuthToken();
 
   console.log("received request inside POST handler");
 
@@ -106,19 +106,18 @@ export async function POST(request: NextRequest) {
   console.log("passed authentication");
 
   try {
-    const body = await request.json();
-    console.log("Received request body:", body);
-    const {
-      buffer: encodedBuffer,
-      speakerId,
-      speakerNumber,
-      start,
-      end,
-      meetingID,
-    } = body;
-    const buffer = Buffer.from(encodedBuffer, "base64");
+    const formData = await request.formData();
+    const file = formData.get("file") as File;
+    const speakerId = formData.get("speakerId") as Id<"speakers">;
+    const speakerNumber = parseInt(
+      formData.get("speakerNumber") as Id<"speakers">
+    );
+    const start = parseFloat(formData.get("start") as string);
+    const end = parseFloat(formData.get("end") as string);
+    const meetingID = formData.get("meetingID") as Id<"meetings">;
+
     console.log("Calling extractAudioClip function");
-    const clippedAudioBuffer = await extractAudioClip(buffer, start, end);
+    const clippedAudioBuffer = await extractAudioClip(file, start, end);
     console.log("Clipped audio buffer:", clippedAudioBuffer);
 
     console.log("Uploading clipped audio buffer to storage...");
