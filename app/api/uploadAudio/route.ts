@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
     console.log("VM response received");
 
     const { externalIP } = await vmResponse.json();
-    console.log("External IP:", externalIP);
 
     const transcriptionServicePort = process.env.TRANSCRIPTION_SERVICE_PORT;
     if (!transcriptionServicePort) {

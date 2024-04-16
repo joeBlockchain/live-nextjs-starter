@@ -15,79 +15,44 @@ async function getAuthToken() {
   return (await auth().getToken({ template: "convex" })) ?? undefined;
 }
 
-async function extractAudioClip(
+async function callCloudFunction(
   file: File,
   start: number,
   end: number
 ): Promise<Buffer> {
-  console.log("Inside extractAudioClip function");
-  const timestamp = format(new Date(), "yyyyMMdd-HHmmss-SSS");
-  const tempInputFile = path.join("/tmp", `audio-input-${timestamp}.webm`);
-  const tempOutputFile = path.join("/tmp", `audio-output-${timestamp}.webm`);
-
-  // Write the input file to a temporary file
-  console.log("Writing input file to temporary file:", tempInputFile);
-  await fs.promises.writeFile(
-    tempInputFile,
-    new Uint8Array(await file.arrayBuffer())
-  );
-  console.log("Input file written to temporary file");
-
-  // Calculate the duration of the clip
-  const duration = end - start;
-
-  try {
-    // Use FFmpeg to extract the audio clip and convert it to Opus format
-    await new Promise<void>((resolve, reject) => {
-      console.log("Starting FFmpeg process");
-      const ffmpegProcess = spawn(
-        "ffmpeg",
-        [
-          "-i",
-          tempInputFile,
-          "-ss",
-          start.toString(),
-          "-t",
-          duration.toString(),
-          "-c:a",
-          "libopus",
-          "-b:a",
-          "128k",
-          "-y",
-          tempOutputFile,
-          "-v",
-          "error",
-          "-loglevel",
-          "error",
-        ],
-        { stdio: ["pipe", "pipe", "pipe"] }
-      );
-
-      ffmpegProcess.stderr.on("data", (data) => {
-        console.error(`FFmpeg error: ${data}`);
-      });
-
-      ffmpegProcess.on("close", (code: number) => {
-        if (code === 0) {
-          console.log("FFmpeg process completed successfully");
-          resolve();
-        } else {
-          console.error(`FFmpeg process exited with code ${code}`);
-          reject(new Error(`FFmpeg process exited with code ${code}`));
-        }
-      });
-    });
-
-    // Read the output file and return the clipped audio buffer
-    const clippedAudioBuffer = await fs.promises.readFile(tempOutputFile);
-    return clippedAudioBuffer;
-  } catch (error) {
-    throw error;
-  } finally {
-    // Clean up temporary files
-    await fs.promises.unlink(tempInputFile);
-    await fs.promises.unlink(tempOutputFile);
+  console.log("Starting call to cloud function for audio clipping.");
+  const cloudFunctionUrl = process.env.GCLOUD_FUNCTION_CLIP_AUDIO_URL;
+  if (!cloudFunctionUrl) {
+    throw new Error(
+      "GCLOUD_COMPUTE_VM_ENDPOINT not found in environment variables"
+    );
   }
+
+  const formData = new FormData();
+  console.log("Preparing file and timestamps for FormData.");
+  formData.append("file", file, file.name);
+  formData.append("start", start.toString());
+  formData.append("end", end.toString());
+  console.log(
+    `FormData prepared with file: ${file.name}, start: ${start}, end: ${end}`
+  );
+
+  console.log("Sending request to cloud function.");
+  const response = await fetch(cloudFunctionUrl, {
+    method: "POST",
+    body: formData,
+  });
+
+  console.log(`Response status: ${response.status}`);
+  if (!response.ok) {
+    console.error("Failed to extract audio clip from cloud function.");
+    throw new Error("Failed to extract audio clip");
+  }
+
+  console.log("Extracting audio clip from response.");
+  const clippedAudioBuffer = await response.arrayBuffer();
+  console.log("Audio clip extracted successfully.");
+  return Buffer.from(clippedAudioBuffer);
 }
 
 export async function POST(request: NextRequest) {
@@ -117,7 +82,7 @@ export async function POST(request: NextRequest) {
     const meetingID = formData.get("meetingID") as Id<"meetings">;
 
     console.log("Calling extractAudioClip function");
-    const clippedAudioBuffer = await extractAudioClip(file, start, end);
+    const clippedAudioBuffer = await callCloudFunction(file, start, end);
     console.log("Clipped audio buffer:", clippedAudioBuffer);
 
     console.log("Uploading clipped audio buffer to storage...");

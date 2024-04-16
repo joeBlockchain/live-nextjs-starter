@@ -128,9 +128,6 @@ export default function UploadAudioDialog({
                     for (const speaker of data.speakers) {
                       const { speakerId, speakerNumber, longestSegment } =
                         speaker;
-                      console.log(
-                        `Extracting audio for speaker number ${speakerNumber} with speaker ID ${speakerId}`
-                      );
 
                       // Await the completion of clipAudio before continuing to the next iteration
                       await clipAudio(
