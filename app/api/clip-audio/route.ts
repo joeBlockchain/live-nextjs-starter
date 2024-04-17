@@ -10,6 +10,7 @@ import { format } from "date-fns";
 import { fetchMutation, fetchAction } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
+import { createSign } from "crypto";
 
 async function getAuthToken() {
   return (await auth().getToken({ template: "convex" })) ?? undefined;
@@ -24,7 +25,7 @@ async function callCloudFunction(
   const cloudFunctionUrl = process.env.GCLOUD_FUNCTION_CLIP_AUDIO_URL;
   if (!cloudFunctionUrl) {
     throw new Error(
-      "GCLOUD_COMPUTE_VM_ENDPOINT not found in environment variables"
+      "GCLOUD_FUNCTION_CLIP_AUDIO_URL not found in environment variables"
     );
   }
 
@@ -41,6 +42,10 @@ async function callCloudFunction(
   const response = await fetch(cloudFunctionUrl, {
     method: "POST",
     body: formData,
+    headers: {
+      // Include the API key in the Authorization header
+      Authorization: `Bearer ${process.env.GCLOUD_FUNCTION_CLIP_KEY}`,
+    },
   });
 
   console.log(`Response status: ${response.status}`);
