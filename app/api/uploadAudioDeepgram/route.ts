@@ -256,27 +256,27 @@ async function* makeIterator(
 
   // Find the longest spoken segment for each speaker
   const speakerSegments = new Map<number, { start: number; end: number }>();
-  let currentSpeaker: number | undefined = words[0].speaker;
+  let segmentCurrentSpeaker: number | undefined = words[0].speaker;
   let segmentStart = words[0].start;
   let segmentEnd = words[0].end;
 
   for (let i = 1; i < words.length; i++) {
     const word = words[i];
 
-    if (word.speaker !== currentSpeaker) {
+    if (word.speaker !== segmentCurrentSpeaker) {
       if (
-        currentSpeaker !== undefined &&
-        (!speakerSegments.has(currentSpeaker) ||
+        segmentCurrentSpeaker !== undefined &&
+        (!speakerSegments.has(segmentCurrentSpeaker) ||
           segmentEnd - segmentStart >
-            speakerSegments.get(currentSpeaker)!.end -
-              speakerSegments.get(currentSpeaker)!.start)
+            speakerSegments.get(segmentCurrentSpeaker)!.end -
+              speakerSegments.get(segmentCurrentSpeaker)!.start)
       ) {
-        speakerSegments.set(currentSpeaker, {
+        speakerSegments.set(segmentCurrentSpeaker, {
           start: segmentStart,
           end: segmentEnd,
         });
       }
-      currentSpeaker = word.speaker;
+      segmentCurrentSpeaker = word.speaker;
       segmentStart = word.start;
     }
     segmentEnd = word.end;
@@ -284,13 +284,13 @@ async function* makeIterator(
 
   // Handle the last segment
   if (
-    currentSpeaker !== undefined &&
-    (!speakerSegments.has(currentSpeaker) ||
+    segmentCurrentSpeaker !== undefined &&
+    (!speakerSegments.has(segmentCurrentSpeaker) ||
       segmentEnd - segmentStart >
-        speakerSegments.get(currentSpeaker)!.end -
-          speakerSegments.get(currentSpeaker)!.start)
+        speakerSegments.get(segmentCurrentSpeaker)!.end -
+          speakerSegments.get(segmentCurrentSpeaker)!.start)
   ) {
-    speakerSegments.set(currentSpeaker, {
+    speakerSegments.set(segmentCurrentSpeaker, {
       start: segmentStart,
       end: segmentEnd,
     });
@@ -305,33 +305,56 @@ async function* makeIterator(
 
   let currentTranscript = "";
   let startTime = words[0].start;
+  let endTime = words[0].end;
+  let currentSpeaker = words[0].speaker;
 
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i];
-    currentTranscript += word.punctuated_word + " ";
+  for (const word of words) {
+    if (word.speaker !== currentSpeaker) {
+      if (currentSpeaker !== undefined) {
+        const speakerId = speakerMap.get(currentSpeaker as number);
 
-    if (i === words.length - 1 || word.speaker !== currentSpeaker) {
-      const endTime = word.end;
-      const speakerId = speakerMap.get(currentSpeaker as number);
-
-      if (speakerId) {
-        await fetchMutation(
-          api.transcript.storeFinalizedSentence,
-          {
-            transcript: currentTranscript,
-            end: endTime,
-            meetingID,
-            speaker: Number(currentSpeaker),
-            speakerId: speakerId.speakerId,
-            start: startTime,
-          },
-          { token }
-        );
+        if (speakerId) {
+          await fetchMutation(
+            api.transcript.storeFinalizedSentence,
+            {
+              transcript: currentTranscript.trim(),
+              end: endTime,
+              meetingID,
+              speaker: Number(currentSpeaker),
+              speakerId: speakerId.speakerId,
+              start: startTime,
+            },
+            { token }
+          );
+        }
       }
 
-      currentTranscript = "";
+      // Reset the transcript for the new speaker and do not prepend the first word again
+      currentTranscript = ""; // Reset the transcript for the new speaker
       startTime = word.start;
-      currentSpeaker = word.speaker;
+    }
+    currentSpeaker = word.speaker;
+    currentTranscript += word.punctuated_word + " ";
+    endTime = word.end;
+  }
+
+  // Handle the last segment
+  if (currentSpeaker !== undefined) {
+    const speakerId = speakerMap.get(currentSpeaker as number);
+
+    if (speakerId) {
+      await fetchMutation(
+        api.transcript.storeFinalizedSentence,
+        {
+          transcript: currentTranscript.trim(),
+          end: endTime,
+          meetingID,
+          speaker: Number(currentSpeaker),
+          speakerId: speakerId.speakerId,
+          start: startTime,
+        },
+        { token }
+      );
     }
   }
 

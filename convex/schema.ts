@@ -12,6 +12,16 @@ export default defineSchema({
     transcript: v.string(),
     sentenceEmbeddingId: v.optional(v.id("sentenceEmbeddings")),
     wordCount: v.optional(v.number()),
+    testfield: v.optional(v.string()),
+    sentiment: v.optional(
+      v.array(
+        v.object({
+          label: v.string(),
+          score: v.float64(),
+          category: v.string(),
+        })
+      )
+    ),
   })
     .index("by_meetingID", ["meetingID"])
     .index("by_speakerId", ["speakerId"]),

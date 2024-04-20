@@ -187,6 +187,30 @@ export const updateSentenceWithEmbedding = mutation({
   },
 });
 
+export const updateSentenceWithSentimentEmotion = mutation({
+  args: {
+    finalizedSentenceId: v.id("finalizedSentences"),
+    sentiment: v.array(
+      v.object({
+        label: v.string(),
+        score: v.float64(),
+        category: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+
+    if (!user) {
+      throw new Error("Please login to create an embedding.");
+    }
+
+    await ctx.db.patch(args.finalizedSentenceId, {
+      sentiment: args.sentiment, // Update the sentiment field with the provided sentiment array
+    });
+  },
+});
+
 //@ts-ignore
 export const searchSentencesByEmbedding = action({
   args: {
