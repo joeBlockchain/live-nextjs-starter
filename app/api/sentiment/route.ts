@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs";
 
+export const runtime = "edge";
+
 async function getAuthToken() {
   return (await auth().getToken({ template: "convex" })) ?? undefined;
 }
