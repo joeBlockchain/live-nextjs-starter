@@ -19,6 +19,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["./**/*"],
+  "include": ["./**/*", "../components/ui/spinner2.tsx"],
   "exclude": ["./_generated"]
 }
