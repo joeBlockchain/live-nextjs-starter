@@ -7,6 +7,12 @@ async function getAuthToken() {
   return (await auth().getToken({ template: "convex" })) ?? undefined;
 }
 
+function sleep(time: number) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, time);
+  });
+}
+
 async function querySentiment(text: string) {
   const data = {
     inputs: text,
@@ -141,12 +147,73 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const sentiment = await querySentiment(text);
-    const topSentiments = getTopSentiments(sentiment);
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ status: "Initiating" })}\n\n`
+          )
+        );
+        await sleep(100);
 
-    return new NextResponse(JSON.stringify({ topSentiments }), {
+        for (let attempt = 1; attempt <= 30; attempt++) {
+          try {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ status: `Attempt ${attempt}` })}\n\n`
+              )
+            );
+            await sleep(100);
+
+            const sentiment = await querySentiment(text);
+            const topSentiments = getTopSentiments(sentiment);
+
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  status: "Completed",
+                  topSentiments,
+                })}\n\n`
+              )
+            );
+            controller.close();
+            break;
+          } catch (error) {
+            if (error instanceof Error) {
+              if (attempt === 30 || !error.message.includes("503")) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({
+                      status: "Error",
+                      error: error.message,
+                    })}\n\n`
+                  )
+                );
+                controller.close();
+                break;
+              }
+            } else {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    status: "Error",
+                    error: "An unknown error occurred",
+                  })}\n\n`
+                )
+              );
+              controller.close();
+              break;
+            }
+            await sleep(1000);
+          }
+        }
+      },
+    });
+
+    return new NextResponse(stream, {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/event-stream" },
     });
   } catch (error) {
     console.error("Error analyzing sentiment:", error);

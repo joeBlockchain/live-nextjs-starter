@@ -40,17 +40,45 @@ const SentimentAnalysis: React.FC<SentimentAnalysisProps> = ({
           body: JSON.stringify({ text }),
         });
 
-        if (!response.ok) {
-          throw new Error("Failed to analyze sentiment");
+        const reader = response.body?.getReader();
+        if (reader) {
+          const decoder = new TextDecoder();
+          let done = false;
+
+          while (!done) {
+            const { value, done: readerDone } = await reader.read();
+            done = readerDone;
+
+            if (value) {
+              const decodedValue = decoder.decode(value);
+              const eventData = decodedValue.trim().split("\n");
+
+              for (const event of eventData) {
+                if (event.startsWith("data:")) {
+                  const jsonString = event.substring(5).trim();
+                  try {
+                    const data = JSON.parse(jsonString);
+                    console.log("Sentiment analysis status:", data.status);
+
+                    if (data.status === "Completed") {
+                      setTopSentiments(data.topSentiments);
+                      updateSentenceWithSentimentEmotion({
+                        finalizedSentenceId: sentenceId!,
+                        sentiment: data.topSentiments,
+                      });
+                    }
+                  } catch (error) {
+                    console.error(
+                      "Error parsing event data:",
+                      jsonString,
+                      error
+                    );
+                  }
+                }
+              }
+            }
+          }
         }
-
-        const result = await response.json();
-        setTopSentiments(result.topSentiments);
-
-        updateSentenceWithSentimentEmotion({
-          finalizedSentenceId: sentenceId!,
-          sentiment: result.topSentiments,
-        });
       } catch (error) {
         if (error instanceof Error) {
           console.error("Error:", error.message);
