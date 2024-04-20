@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { format } from "date-fns";
+import { Button } from "@/components/ui/button";
 
 const TestTranscriptionPage = () => {
   const [transcriptions, setTranscriptions] = useState<any[]>([]);
@@ -68,8 +69,21 @@ const TestTranscriptionPage = () => {
       .slice(0, 2)}`;
   };
 
+  const handleTestSentiment = async () => {
+    try {
+      const response = await fetch("/api/sentiment", {
+        method: "POST",
+      });
+      const data = await response.json();
+      console.log("Sentiment:", data.sentiment);
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+
   return (
     <div className="flex flex-col space-y-3 mx-4">
+      <Button onClick={handleTestSentiment}>Test Sentiment</Button>
       <h1>Test Transcription</h1>
       <form onSubmit={handleSubmit}>
         <input type="file" accept="audio/*" onChange={handleFileChange} />

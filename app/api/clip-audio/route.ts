@@ -1,16 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import ffmpeg from "ffmpeg-static";
-import { spawn } from "child_process";
-import { clerkClient } from "@clerk/nextjs";
+import { NextRequest } from "next/server";
+
 import { auth } from "@clerk/nextjs";
-import { getAuth } from "@clerk/nextjs/server";
-import { format } from "date-fns";
+
 import { fetchMutation, fetchAction } from "convex/nextjs";
 import { api } from "@/convex/_generated/api";
-import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { createSign } from "crypto";
+import type { Id } from "@/convex/_generated/dataModel";
 
 async function getAuthToken() {
   return (await auth().getToken({ template: "convex" })) ?? undefined;
@@ -21,7 +15,6 @@ async function callCloudFunction(
   start: number,
   end: number
 ): Promise<Buffer> {
-  console.log("Starting call to cloud function for audio clipping.");
   const cloudFunctionUrl = process.env.GCLOUD_FUNCTION_CLIP_AUDIO_URL;
   if (!cloudFunctionUrl) {
     throw new Error(
@@ -30,15 +23,11 @@ async function callCloudFunction(
   }
 
   const formData = new FormData();
-  console.log("Preparing file and timestamps for FormData.");
+
   formData.append("file", file, file.name);
   formData.append("start", start.toString());
   formData.append("end", end.toString());
-  console.log(
-    `FormData prepared with file: ${file.name}, start: ${start}, end: ${end}`
-  );
 
-  console.log("Sending request to cloud function.");
   const response = await fetch(cloudFunctionUrl, {
     method: "POST",
     body: formData,
@@ -48,23 +37,17 @@ async function callCloudFunction(
     },
   });
 
-  console.log(`Response status: ${response.status}`);
   if (!response.ok) {
     console.error("Failed to extract audio clip from cloud function.");
     throw new Error("Failed to extract audio clip");
   }
 
-  console.log("Extracting audio clip from response.");
   const clippedAudioBuffer = await response.arrayBuffer();
-  console.log("Audio clip extracted successfully.");
   return Buffer.from(clippedAudioBuffer);
 }
 
 export async function POST(request: NextRequest) {
-  console.log("Received request in clip-audio route");
   const token = await getAuthToken();
-
-  console.log("received request inside POST handler");
 
   if (!token) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -72,8 +55,6 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  console.log("passed authentication");
 
   try {
     const formData = await request.formData();
@@ -86,11 +67,7 @@ export async function POST(request: NextRequest) {
     const end = parseFloat(formData.get("end") as string);
     const meetingID = formData.get("meetingID") as Id<"meetings">;
 
-    console.log("Calling extractAudioClip function");
     const clippedAudioBuffer = await callCloudFunction(file, start, end);
-    console.log("Clipped audio buffer:", clippedAudioBuffer);
-
-    console.log("Uploading clipped audio buffer to storage...");
 
     const uploadUrlClip = await fetchMutation(
       api.transcript.generateAudioUploadUrl,

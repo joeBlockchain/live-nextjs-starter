@@ -37,6 +37,7 @@ import type { SpeakerDetail, FinalizedSentence } from "../microphone"; // Assumi
 import PulseLoader from "react-spinners/PulseLoader";
 
 //import custom stuff
+import SentimentAnalysisComponent from "@/components/microphone/sentiment";
 
 interface CaptionDetail {
   words: string;
@@ -439,8 +440,7 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                 <div className="relative flex flex-col ml-4 border rounded-lg p-4 group">
                   <div className="flex flex-row justify-between mb-3">
                     <div className="absolute -top-6 right-2 opacity-0 group-hover:opacity-100 text-sm text-muted-foreground">
-                      {result.start.toFixed(2)} - {result.end.toFixed(2)}{" "}
-                      {/* Access properties directly */}
+                      {result.start.toFixed(2)} - {result.end.toFixed(2)}
                     </div>
                     <div className="font-bold mr-8">
                       {getSpeakerName(result.speaker)}
@@ -454,8 +454,14 @@ const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({
                       <X size={16} />
                     </Button>
                   </div>
-                  <div>{result.transcript} </div>{" "}
-                  {/* Access properties directly */}
+                  <div className="">{result.transcript} </div>
+                  {/* <div className="absolute bottom-2 right-2"> */}
+                  <SentimentAnalysisComponent
+                    text={result.transcript}
+                    sentenceId={result._id}
+                    sentimentProp={result.sentiment}
+                  />
+                  {/* </div> */}
                 </div>
               </div>
             )
