@@ -13,56 +13,34 @@ function sleep(time: number) {
   });
 }
 
-async function querySentiment(text: string) {
-  const data = {
-    inputs: text,
-    parameters: { top_k: 28 },
+async function querySentiment(inputText: string) {
+  const gclouddata = {
+    text: inputText,
   };
 
-  const makeRequest = async () => {
-    const response = await fetch(
-      process.env.SENTINMENT_URL_ENDPOINT as string,
+  try {
+    const gcloudresponse = await fetch(
+      process.env.GCLOUD_FUNCTION_SENTIMENT_EMOTIONS_URL as string,
       {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
         method: "POST",
-        body: JSON.stringify(data),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.GCLOUD_FUNCTION_KEY}`,
+        },
+        body: JSON.stringify(gclouddata),
       }
     );
 
-    if (!response.ok) {
-      const result = await response.json();
-      throw new Error(
-        `HTTP error! status: ${response.status}, message: ${result.error}`
-      );
+    if (!gcloudresponse.ok) {
+      throw new Error(`Error: ${gcloudresponse.status}`);
     }
 
-    return response.json();
-  };
+    const responseData = await gcloudresponse.json();
 
-  for (let attempt = 1; attempt <= 30; attempt++) {
-    try {
-      console.log(`Attempt ${attempt}: Sending sentiment analysis request.`);
-      const result = await makeRequest();
-      console.log("Sentiment analysis response received!", result);
-      return result;
-    } catch (error) {
-      // Type guard to check if error is an instance of Error
-      if (error instanceof Error) {
-        console.log(`Attempt ${attempt} failed:`, error.message);
-        if (attempt === 30 || !error.message.includes("503")) {
-          throw error;
-        }
-      } else {
-        // Handle the case where error is not an instance of Error
-        console.log(`Attempt ${attempt} failed with an unknown error`);
-        throw new Error("An unknown error occurred");
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for 1 second
-    }
+    return responseData.results;
+  } catch (error) {
+    console.error("Error calling GCloud Function:", error);
+    throw error; // Rethrow the error to handle it in the calling function
   }
 }
 

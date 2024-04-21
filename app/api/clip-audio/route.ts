@@ -33,7 +33,7 @@ async function callCloudFunction(
     body: formData,
     headers: {
       // Include the API key in the Authorization header
-      Authorization: `Bearer ${process.env.GCLOUD_FUNCTION_CLIP_KEY}`,
+      Authorization: `Bearer ${process.env.GCLOUD_FUNCTION_KEY}`,
     },
   });
 
