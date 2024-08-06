@@ -1,13 +1,14 @@
-import type { Config } from "tailwindcss"
+import type { Config } from "tailwindcss";
+const defaultTheme = require("tailwindcss/defaultTheme");
 
 const config = {
   darkMode: ["class"],
   content: [
-    './pages/**/*.{ts,tsx}',
-    './components/**/*.{ts,tsx}',
-    './app/**/*.{ts,tsx}',
-    './src/**/*.{ts,tsx}',
-	],
+    "./pages/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./app/**/*.{ts,tsx}",
+    "./src/**/*.{ts,tsx}",
+  ],
   prefix: "",
   theme: {
     container: {
@@ -16,6 +17,10 @@ const config = {
       screens: {
         "2xl": "1400px",
       },
+    },
+    screens: {
+      xs: "425px",
+      ...defaultTheme.screens,
     },
     extend: {
       colors: {
@@ -72,9 +77,70 @@ const config = {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
       },
+      typography: (theme: any) => ({
+        DEFAULT: {
+          css: {
+            color: theme("colors.foreground"),
+            '[class~="lead"]': {
+              color: theme("colors.foreground"),
+            },
+            a: {
+              color: theme("colors.primary.DEFAULT"),
+            },
+            strong: {
+              color: theme("colors.foreground"),
+            },
+            "ol > li::before": {
+              color: theme("colors.foreground"),
+            },
+            "ul > li::before": {
+              backgroundColor: theme("colors.foreground"),
+            },
+            hr: {
+              borderColor: theme("colors.border"),
+            },
+            blockquote: {
+              color: theme("colors.foreground"),
+              borderLeftColor: theme("colors.border"),
+            },
+            h1: {
+              color: theme("colors.foreground"),
+            },
+            h2: {
+              color: theme("colors.foreground"),
+            },
+            h3: {
+              color: theme("colors.foreground"),
+            },
+            h4: {
+              color: theme("colors.foreground"),
+            },
+            "figure figcaption": {
+              color: theme("colors.foreground"),
+            },
+            code: {
+              color: theme("colors.foreground"),
+            },
+            "a code": {
+              color: theme("colors.foreground"),
+            },
+            pre: {
+              color: theme("colors.foreground"),
+              backgroundColor: theme("colors.background"),
+            },
+            thead: {
+              color: theme("colors.foreground"),
+              borderBottomColor: theme("colors.border"),
+            },
+            "tbody tr": {
+              borderBottomColor: theme("colors.border"),
+            },
+          },
+        },
+      }),
     },
   },
-  plugins: [require("tailwindcss-animate")],
-} satisfies Config
+  plugins: [require("tailwindcss-animate"), require("@tailwindcss/typography")],
+} satisfies Config;
 
-export default config
+export default config;

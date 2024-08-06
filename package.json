@@ -52,6 +52,7 @@
     "formidable": "^3.5.1",
     "highlight.js": "^11.9.0",
     "logrocket": "^8.0.1",
+    "lucide": "^0.424.0",
     "lucide-react": "^0.316.0",
     "next": "14.0.1",
     "next-themes": "^0.2.1",
@@ -76,7 +77,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.13",
     "@types/fluent-ffmpeg": "^2.1.24",
     "@types/formidable": "^3.4.5",
     "@types/node": "^20",
