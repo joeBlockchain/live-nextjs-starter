@@ -483,6 +483,9 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
+
+    console.log("Form data:", formData);
+    
     const iterator = makeIterator(formData, userId, token);
     const stream = iteratorToStream(iterator);
 
