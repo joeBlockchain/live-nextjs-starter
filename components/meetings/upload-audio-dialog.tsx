@@ -22,6 +22,8 @@ import {
 import { Progress } from "../ui/progress";
 import Spinner from "../ui/spinner";
 import { useRouter } from "next/navigation";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 interface UploadAudioDialogProps {
   meetingId?: string;
@@ -40,6 +42,9 @@ export default function UploadAudioDialog({
   >(null);
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const generateUploadUrl = useMutation(api.transcript.generateAudioUploadUrl);
+  const router = useRouter();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -76,18 +81,32 @@ export default function UploadAudioDialog({
   async function uploadFile() {
     if (!selectedFile) return; // Exit if no file is selected
 
-    const formData = new FormData();
-    formData.append("file", selectedFile); // Append the file under the key 'file'
-
-    // Include the meetingId in the form data if provided
-    if (meetingId) {
-      formData.append("meetingId", meetingId);
-    }
-
     try {
       setUploadStatus("pending");
+      setProgressStatus("Uploading audio");
 
-      console.log("Upload started");
+      // Step 1: Get the upload URL from Convex
+      const uploadUrl = await generateUploadUrl();
+
+      // Step 2: Upload the file to Convex
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { "Content-Type": selectedFile.type },
+        body: selectedFile,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload audio to Convex");
+      }
+
+      const { storageId } = await uploadResponse.json();
+
+      // Step 3: Send the storageId to our API for processing
+      const formData = new FormData();
+      formData.append("storageId", storageId);
+      if (meetingId) {
+        formData.append("meetingId", meetingId);
+      }
 
       const response = await fetch("/api/uploadAudioDeepgram", {
         method: "POST",
@@ -196,8 +215,6 @@ export default function UploadAudioDialog({
     setSelectedFile(null); // Remove the selected file
   };
 
-  const router = useRouter();
-
   const handleMeetingSelect = () => {
     console.log("handleMeetingSelect: ", createdMeetingId);
     if (createdMeetingId) {
@@ -226,7 +243,7 @@ export default function UploadAudioDialog({
       </DialogTrigger>
       <DialogContent className="">
         <DialogHeader>
-          <DialogTitle>Upload Audio File</DialogTitle>
+          <DialogTitle>Upload Audio File!</DialogTitle>
           <DialogDescription>
             Drag and drop your audio file here, or browse...
           </DialogDescription>

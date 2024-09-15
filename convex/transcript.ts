@@ -867,3 +867,24 @@ async function postAudioToRunpod(audioUrl: string): Promise<any> {
 
   return await response.json();
 }
+
+export const getAudioFile = query({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => {
+    const user = await ctx.auth.getUserIdentity();
+    if (!user) {
+      throw new Error("User not authenticated");
+    }
+
+    try {
+      const audioUrl = await ctx.storage.getUrl(args.storageId);
+      if (!audioUrl) {
+        throw new Error("Audio file URL not found");
+      }
+      return audioUrl;
+    } catch (error) {
+      console.error("Error fetching audio file URL:", error);
+      throw new Error("Failed to fetch audio file URL");
+    }
+  },
+});

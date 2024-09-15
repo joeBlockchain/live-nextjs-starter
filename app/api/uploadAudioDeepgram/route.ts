@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs";
 import { createClient } from "@deepgram/sdk";
 import { api } from "@/convex/_generated/api";
-import { fetchMutation, fetchAction } from "convex/nextjs";
+import { fetchMutation, fetchAction, fetchQuery } from "convex/nextjs";
 import type { Id } from "@/convex/_generated/dataModel";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -146,52 +146,84 @@ function sleep(time: number) {
 const encoder = new TextEncoder();
 
 async function* makeIterator(
-  formData: FormData,
+  storageId: string,
+  meetingId: string | undefined,
   userId: string,
   token: string
 ) {
+  console.log(
+    "Starting makeIterator with storageId:",
+    storageId,
+    "meetingId:",
+    meetingId,
+    "userId:",
+    userId
+  );
+
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Authenticating" })}\n\n`
   );
+  console.log("Status: Authenticating");
   await sleep(100);
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Initiating" })}\n\n`);
+  console.log("Status: Initiating");
   await sleep(100);
 
-  const file = formData.get("file") as File;
-
-  const meetingIdParam = formData.get("meetingId") as string | null;
   let meetingID: Id<"meetings">;
 
-  if (meetingIdParam) {
-    meetingID = meetingIdParam as Id<"meetings">;
+  if (meetingId) {
+    meetingID = meetingId as Id<"meetings">;
+    console.log("Using provided meetingId:", meetingID);
   } else {
     const meetingResponse = await fetchMutation(
       api.meetings.createMeeting,
-      { title: file.name },
+      { title: "Untitled Meeting" },
       { token }
     );
     meetingID = meetingResponse.meetingId;
+    console.log("Created new meeting with ID:", meetingID);
   }
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Uploading" })}\n\n`);
+  console.log("Status: Uploading");
   await sleep(100);
-
-  if (!file) {
-    throw new Error("No file uploaded");
-  }
 
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Transcribing" })}\n\n`
   );
+  console.log("Status: Transcribing");
   await sleep(100);
 
   const deepgram = createClient(process.env.DEEPGRAM_API_KEY!);
-  const fileBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(fileBuffer);
 
+  // Fetch the audio file from Convex
+  const audioUrl = await fetchQuery(
+    api.transcript.getAudioFile,
+    { storageId: storageId as Id<"_storage"> },
+    { token }
+  );
+  if (!audioUrl) {
+    console.error("Failed to fetch audio file URL from Convex");
+    throw new Error("Failed to fetch audio file URL from Convex");
+  }
+  console.log("Fetched audio URL:", audioUrl);
+
+  // Now you can use this URL to fetch the audio file
+  const audioResponse = await fetch(audioUrl);
+  if (!audioResponse.ok) {
+    console.error("Failed to fetch audio file from URL");
+    throw new Error("Failed to fetch audio file from URL");
+  }
+  const audioBuffer = await audioResponse.arrayBuffer();
+  console.log(
+    "Fetched audio file successfully, buffer size:",
+    audioBuffer.byteLength
+  );
+
+  // Process with Deepgram
   const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
-    buffer,
+    Buffer.from(audioBuffer),
     {
       model: "nova-2",
       smart_format: true,
@@ -200,10 +232,12 @@ async function* makeIterator(
   );
 
   if (error) {
+    console.error("Deepgram API error:", error);
     throw new Error("Deepgram API error");
   }
 
   const audioDurationInSeconds = Math.floor(result.metadata.duration);
+  console.log("Audio duration in seconds:", audioDurationInSeconds);
 
   const updateDurationResponse = await fetchMutation(
     api.meetings.updateMeetingDetails,
@@ -219,16 +253,19 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Propose Title" })}\n\n`
   );
+  console.log("Status: Proposing Title");
   await sleep(100);
 
   const completeTranscript =
     result.results.channels[0].alternatives[0].transcript;
+  console.log("Complete transcript:", completeTranscript);
 
   const proposeTitlePromise = proposeMeetingTitle(completeTranscript);
 
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing speakers" })}\n\n`
   );
+  console.log("Status: Processing speakers");
   await sleep(100);
 
   const words = result.results.channels[0].alternatives[0].words;
@@ -252,6 +289,7 @@ async function* makeIterator(
       { token }
     );
     speakerMap.set(speakerNumber, { speakerId: speakerID, storageId: "" });
+    console.log("Added speaker:", speakerNumber, "with ID:", speakerID);
   }
 
   // Find the longest spoken segment for each speaker
@@ -275,6 +313,14 @@ async function* makeIterator(
           start: segmentStart,
           end: segmentEnd,
         });
+        console.log(
+          "Recorded segment for speaker:",
+          segmentCurrentSpeaker,
+          "from",
+          segmentStart,
+          "to",
+          segmentEnd
+        );
       }
       segmentCurrentSpeaker = word.speaker;
       segmentStart = word.start;
@@ -294,6 +340,14 @@ async function* makeIterator(
       start: segmentStart,
       end: segmentEnd,
     });
+    console.log(
+      "Recorded last segment for speaker:",
+      segmentCurrentSpeaker,
+      "from",
+      segmentStart,
+      "to",
+      segmentEnd
+    );
   }
 
   console.log("Longest segments:", speakerSegments);
@@ -301,6 +355,7 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Processing transcript" })}\n\n`
   );
+  console.log("Status: Processing transcript");
   await sleep(100);
 
   let currentTranscript = "";
@@ -325,6 +380,12 @@ async function* makeIterator(
               start: startTime,
             },
             { token }
+          );
+          console.log(
+            "Stored finalized sentence for speaker:",
+            currentSpeaker,
+            "transcript:",
+            currentTranscript.trim()
           );
         }
       }
@@ -355,12 +416,19 @@ async function* makeIterator(
         },
         { token }
       );
+      console.log(
+        "Stored finalized sentence for last speaker:",
+        currentSpeaker,
+        "transcript:",
+        currentTranscript.trim()
+      );
     }
   }
 
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Text embeddings" })}\n\n`
   );
+  console.log("Status: Text embeddings");
   await sleep(100);
 
   await fetchAction(
@@ -373,67 +441,19 @@ async function* makeIterator(
   yield encoder.encode(
     `data: ${JSON.stringify({ status: "Predicting speakers" })}\n\n`
   );
+  console.log("Status: Predicting speakers");
   await sleep(100);
-
-  // for (const [speakerNumber, segment] of Array.from(
-  //   speakerSegments.entries()
-  // )) {
-  //   const speakerClip = await extractAudioClip(
-  //     buffer,
-  //     segment.start,
-  //     segment.end,
-  //     meetingID,
-  //     token
-  //   );
-  // }
-
-  // const clipPromises = Array.from(speakerSegments.entries()).map(
-  //   async ([speakerNumber, segment]) => {
-  //     const speakerInfo = speakerMap.get(speakerNumber);
-  //     if (!speakerInfo) {
-  //       throw new Error(
-  //         `Speaker ID not found for speaker number ${speakerNumber}`
-  //       );
-  //     }
-  //     return extractAudioClip(
-  //       buffer,
-  //       speakerInfo.speakerId,
-  //       speakerNumber,
-  //       segment.start,
-  //       segment.end,
-  //       meetingID,
-  //       token
-  //     );
-  //   }
-  // );
-
-  // // Wait for all clip extraction promises to resolve
-  // const speakerClips = await Promise.all(clipPromises);
 
   yield encoder.encode(`data: ${JSON.stringify({ status: "Save audio" })}\n\n`);
+  console.log("Status: Save audio");
   await sleep(100);
 
-  const uploadUrl = await fetchMutation(
-    api.transcript.generateAudioUploadUrl,
-    {},
-    { token }
-  );
-
-  const uploadResponse = await fetch(uploadUrl, {
-    method: "POST",
-    headers: { "Content-Type": "audio/webm" },
-    body: buffer,
-  });
-  if (!uploadResponse.ok) {
-    throw new Error("Failed to upload audio blob");
-  }
-  const { storageId } = await uploadResponse.json();
-
+  // Instead of uploading audio again, use the existing storageId
   await fetchMutation(
     api.transcript.saveMeetingAudio,
     {
       meetingID,
-      storageId,
+      storageId: storageId as Id<"_storage">,
     },
     { token }
   );
@@ -471,6 +491,12 @@ async function* makeIterator(
       ),
     })}\n\n`
   );
+  console.log(
+    "Completed processing for meeting ID:",
+    meetingID,
+    "with title:",
+    proposedTitle
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -482,11 +508,19 @@ export async function POST(request: NextRequest) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
+    console.log("user id:", userId);
+
     const formData = await request.formData();
 
-    console.log("Form data:", formData);
-    
-    const iterator = makeIterator(formData, userId, token);
+    console.log("formData:", formData);
+    const storageId = formData.get("storageId") as string;
+    const meetingId = formData.get("meetingId") as string | undefined;
+
+    if (!storageId) {
+      return new NextResponse("No storageId provided", { status: 400 });
+    }
+
+    const iterator = makeIterator(storageId, meetingId, userId, token);
     const stream = iteratorToStream(iterator);
 
     return new NextResponse(stream, {
